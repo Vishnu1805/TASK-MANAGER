@@ -1,9 +1,17 @@
-import { useState } from 'react';
-import { View, TextInput, Pressable, Text, StyleSheet } from 'react-native';
+// app/add.tsx
+import React, { useState } from 'react';
+import {
+  View,
+  TextInput,
+  Pressable,
+  Text,
+  Alert,
+  StyleSheet,
+} from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import { useTasks } from '../../hooks/useTasks';
-import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from 'expo-router';
+import { useTasks } from '../../hooks/useTasks';
+import { useAuth, User } from '../../hooks/useAuth';
 
 export default function AddTaskScreen() {
   const [title, setTitle] = useState('');
@@ -13,20 +21,23 @@ export default function AddTaskScreen() {
   const router = useRouter();
 
   const handleAdd = () => {
-    if (!title.trim() || !assigneeId) return;
+    if (!title.trim() || !assigneeId) {
+      Alert.alert('Error', 'Please fill out both fields.');
+      return;
+    }
     addTask(title, assigneeId);
-    setTitle('');
-    setAssigneeId('');
-    router.replace("./index");
+    Alert.alert('Success', 'Task added!');
+    // Replace current screen with Tasks list
+    router.replace('/');
   };
 
   return (
     <View style={styles.container}>
       <TextInput
-        placeholder="Enter task"
+        style={styles.input}
+        placeholder="Task Title"
         value={title}
         onChangeText={setTitle}
-        style={styles.input}
       />
       <Picker
         selectedValue={assigneeId}
@@ -34,8 +45,8 @@ export default function AddTaskScreen() {
         style={styles.picker}
       >
         <Picker.Item label="Select Assignee" value="" />
-        {users.map(user => (
-          <Picker.Item key={user.id} label={user.username} value={user.id} />
+        {users.map((u: User) => (
+          <Picker.Item key={u.id} label={u.username} value={u.id} />
         ))}
       </Picker>
       <Pressable onPress={handleAdd} style={styles.button}>
@@ -49,9 +60,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
   },
   input: {
     borderWidth: 1,
+    borderColor: '#ccc',
     borderRadius: 8,
     padding: 10,
     marginBottom: 16,
@@ -60,17 +74,13 @@ const styles = StyleSheet.create({
   picker: {
     height: 50,
     width: '100%',
-    marginBottom: 16,
+    marginBottom: 24,
   },
   button: {
-    backgroundColor: '#2196F3',
+    backgroundColor: '#4CAF50',
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
   },
-  buttonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
 });

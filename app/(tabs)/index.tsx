@@ -1,115 +1,268 @@
-import { useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+// import React from 'react';
+// import { FlatList, Pressable, StyleSheet, Text, View, Alert } from 'react-native';
+// import { useRouter } from 'expo-router';
+// import { useTasks } from '../../hooks/useTasks';
+
+// export default function TaskListScreen() {
+//   const { tasks, toggleTask, deleteTask } = useTasks();
+//   const router = useRouter();
+
+//   const handleDelete = (id: string) => {
+//     Alert.alert('Delete Task', 'Are you sure?', [
+//       { text: 'Cancel', style: 'cancel' },
+//       {
+//         text: 'Delete',
+//         style: 'destructive',
+//         onPress: () => {
+//           console.log('Deleting task:', id);
+//           deleteTask(id);
+//         },
+//       },
+//     ]);
+//   };
+
+//   const handleEdit = (id: string) => {
+//     console.log('Navigating to Edit:', id);
+//     router.push({
+//       pathname: '/(tabs)/Edit',
+//       params: { id },
+//     });
+//   };
+
+//   return (
+//     <View style={styles.container}>
+//       <FlatList
+//         data={tasks}
+//         keyExtractor={(t) => t.id}
+//         renderItem={({ item }) => (
+//           <View style={styles.row}>
+//             <View style={{ flex: 1 }}>
+//               <Text style={[styles.title, item.done && styles.done]}>
+//                 {item.title}
+//               </Text>
+//               <Text style={styles.assignee}>Assigned to: {item.assigneeId}</Text>
+//             </View>
+
+//             <View style={styles.buttons}>
+//               <Pressable
+//                 onPress={() => toggleTask(item.id)}
+//                 style={styles.doneButton}
+//               >
+//                 <Text style={styles.buttonText}>
+//                   {item.done ? 'Undo' : 'Done'}
+//                 </Text>
+//               </Pressable>
+
+//               <Pressable
+//                 onPress={() => handleEdit(item.id)}
+//                 style={styles.editButton}
+//               >
+//                 <Text style={styles.buttonText}>Edit</Text>
+//               </Pressable>
+
+//               <Pressable
+//                 onPress={() => handleDelete(item.id)}
+//                 style={styles.deleteButton}
+//               >
+//                 <Text style={styles.buttonText}>Delete</Text>
+//               </Pressable>
+
+//             </View>
+//           </View>
+//         )}
+//       />
+
+//       <Pressable
+//         style={styles.addButton}
+//         onPress={() => router.push({ pathname: '/(tabs)/Add' })}
+//       >
+//         <Text style={styles.addText}>+ Add Task</Text>
+//       </Pressable>
+//     </View>
+//   );
+// }
+
+// const styles = StyleSheet.create({
+//   container: { flex: 1, padding: 16 },
+//   row: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     paddingVertical: 12,
+//     borderBottomWidth: 1,
+//     borderColor: '#eee',
+//     overflow: 'visible', // ✅ ensure buttons are clickable
+//   },
+//   title: { fontSize: 16 },
+//   done: { textDecorationLine: 'line-through', color: '#888' },
+//   assignee: { fontSize: 12, color: '#666' },
+//   buttons: {
+//     flexDirection: 'column',
+//     alignItems: 'flex-end',
+//     gap: 8,
+//     marginLeft: 10,
+//   },
+//   editButton: {
+//     backgroundColor: '#2196F3',
+//     paddingHorizontal: 10,
+//     paddingVertical: 6,
+//     borderRadius: 4,
+//   },
+//   doneButton: {
+//     backgroundColor: '#4CAF50',
+//     paddingHorizontal: 10,
+//     paddingVertical: 6,
+//     borderRadius: 4,
+//   },
+//   deleteButton: {
+//     backgroundColor: '#f44336',
+//     paddingHorizontal: 10,
+//     paddingVertical: 6,
+//     borderRadius: 4,
+//   },
+//   buttonText: { color: '#fff', fontSize: 12 },
+//   addButton: {
+//     position: 'absolute',
+//     right: 16,
+//     bottom: 32,
+//     backgroundColor: '#4CAF50',
+//     padding: 16,
+//     borderRadius: 32,
+//   },
+//   addText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+// });
+
+
+import { useRouter } from 'expo-router';
+import React from 'react';
+import {
+  Alert,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useTasks } from '../../hooks/useTasks';
-import { useAuth } from '../../hooks/useAuth';
 
-export default function HomeScreen() {
-  const { tasks, toggleTask } = useTasks();
-  const { currentUser, users, logout } = useAuth();
+export default function TaskListScreen() {
+  const { tasks, toggleTask, deleteTask } = useTasks();
+  const router = useRouter();
 
-  if (!currentUser) {
-    return null; // or a loading indicator
-  }
+  const handleDelete = (id: string) => {
+    Alert.alert('Delete Task', 'Are you sure you want to delete this task?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          console.log('Deleting task ID:', id);
+          deleteTask(id);
+        },
+      },
+    ]);
+  };
 
-  const getAssigneeName = (assigneeId: string) => {
-    const user = users.find(u => u.id === assigneeId);
-    return user ? user.username : 'Unknown';
+  const handleEdit = (id: string) => {
+    console.log('Navigating to Edit with ID:', id);
+    router.push(`/Edit?id=${id}`);
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Task List</Text>
       <FlatList
         data={tasks}
-        keyExtractor={item => item.id}
+        keyExtractor={(t) => t.id}
         renderItem={({ item }) => (
-          <View
-            style={[
-              styles.taskItem,
-              item.done && styles.taskDoneBackground,
-            ]}
-          >
-            <Text
-              style={[
-                styles.taskText,
-                item.done && styles.taskDoneText,
-              ]}
-            >
-              {item.title} (Assigned to: {getAssigneeName(item.assigneeId)})
-            </Text>
-            <Pressable
-              onPress={() => toggleTask(item.id)}
-              style={({ pressed }) => [
-                styles.button,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text style={styles.buttonText}>
-                {item.done ? 'Undo' : 'Done'}
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.title, item.done && styles.done]}>
+                {item.title}
               </Text>
-            </Pressable>
+              <Text style={styles.assignee}>Assigned to: {item.assigneeId}</Text>
+            </View>
+
+            <View style={styles.buttons}>
+              <Pressable
+                onPress={() => toggleTask(item.id)}
+                style={styles.doneButton}
+              >
+                <Text style={styles.buttonText}>
+                  {item.done ? 'Undo' : 'Done'}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => handleEdit(item.id)}
+                style={styles.editButton}
+              >
+                <Text style={styles.buttonText}>Edit</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => handleDelete(item.id)}
+                style={styles.deleteButton}
+              >
+                <Text style={styles.buttonText}>Delete</Text>
+              </Pressable>
+            </View>
           </View>
         )}
       />
-      <Pressable onPress={logout} style={styles.logoutButton}>
-        <Text style={styles.logoutButtonText}>Logout</Text>
+
+      <Pressable
+        style={styles.addButton}
+        onPress={() => router.push('/Add')}
+      >
+        <Text style={styles.addText}>+ Add Task</Text>
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-  },
-  header: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  taskItem: {
+  container: { flex: 1, padding: 16 },
+  row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-    backgroundColor: '#f5f5f5',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderColor: '#eee',
   },
-  taskDoneBackground: {
-    backgroundColor: '#e0e0e0',
+  title: { fontSize: 16 },
+  done: { textDecorationLine: 'line-through', color: '#888' },
+  assignee: { fontSize: 12, color: '#666' },
+  buttons: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 8,
+    marginLeft: 10,
   },
-  taskText: {
-    fontSize: 16,
-    flex: 1,
-  },
-  taskDoneText: {
-    textDecorationLine: 'line-through',
-    color: '#888',
-  },
-  button: {
-    padding: 8,
+  editButton: {
     backgroundColor: '#2196F3',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 4,
   },
-  buttonPressed: {
-    backgroundColor: '#1976D2',
+  doneButton: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 4,
   },
-  buttonText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  logoutButton: {
+  deleteButton: {
     backgroundColor: '#f44336',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 4,
   },
-  logoutButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
+  buttonText: { color: '#fff', fontSize: 12 },
+  addButton: {
+    position: 'absolute',
+    right: 16,
+    bottom: 32,
+    backgroundColor: '#4CAF50',
+    padding: 16,
+    borderRadius: 32,
   },
+  addText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
 });
