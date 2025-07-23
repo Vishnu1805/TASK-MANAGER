@@ -1,0 +1,21 @@
+# Node modules
+node_modules
+.expo
+.expo-shared
+npm-debug.log
+yarn-error.log
+
+# Build output
+dist
+web-build
+android
+ios
+
+# Git
+.git
+.gitignore
+
+# IDE files
+.vscode
+*.swp
+.DS_Store

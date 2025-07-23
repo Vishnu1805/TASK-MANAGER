@@ -1,7 +1,6 @@
 // app/_layout.tsx
 import { Stack } from 'expo-router';
 import { useAuth } from '../../hooks/useAuth';
-import LoginScreen from './Login';
 
 export default function RootLayout() {
   const { currentUser } = useAuth();
