@@ -1,33 +1,31 @@
-// app/add.tsx
+// Add.tsx
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  View,
-  TextInput,
-  Pressable,
-  Text,
   Alert,
+  Pressable,
   StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
-import { useRouter } from 'expo-router';
 import { useTasks } from '../../hooks/useTasks';
-import { useAuth, User } from '../../hooks/useAuth';
 
 export default function AddTaskScreen() {
   const [title, setTitle] = useState('');
-  const [assigneeId, setAssigneeId] = useState('');
+  const [description, setDescription] = useState('');
+  const [status, setStatus] = useState('pending');
+  const [dueDate, setDueDate] = useState('');
   const { addTask } = useTasks();
-  const { users } = useAuth();
   const router = useRouter();
 
-  const handleAdd = () => {
-    if (!title.trim() || !assigneeId) {
-      Alert.alert('Error', 'Please fill out both fields.');
+  const handleAdd = async () => {
+    if (!title.trim()) {
+      Alert.alert('Error', 'Title is required.');
       return;
     }
-    addTask(title, assigneeId);
+    await addTask(title, description, status, dueDate);
     Alert.alert('Success', 'Task added!');
-    // Replace current screen with Tasks list
     router.replace('/');
   };
 
@@ -39,16 +37,24 @@ export default function AddTaskScreen() {
         value={title}
         onChangeText={setTitle}
       />
-      <Picker
-        selectedValue={assigneeId}
-        onValueChange={setAssigneeId}
-        style={styles.picker}
-      >
-        <Picker.Item label="Select Assignee" value="" />
-        {users.map((u: User) => (
-          <Picker.Item key={u.id} label={u.username} value={u.id} />
-        ))}
-      </Picker>
+      <TextInput
+        style={styles.input}
+        placeholder="Description"
+        value={description}
+        onChangeText={setDescription}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Status (pending, in_progress, completed)"
+        value={status}
+        onChangeText={setStatus}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Due Date (YYYY-MM-DD)"
+        value={dueDate}
+        onChangeText={setDueDate}
+      />
       <Pressable onPress={handleAdd} style={styles.button}>
         <Text style={styles.buttonText}>Add Task</Text>
       </Pressable>
@@ -70,11 +76,6 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 16,
     fontSize: 16,
-  },
-  picker: {
-    height: 50,
-    width: '100%',
-    marginBottom: 24,
   },
   button: {
     backgroundColor: '#4CAF50',

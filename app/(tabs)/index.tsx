@@ -1,159 +1,153 @@
+// Login.tsx
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
-  FlatList,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
-import { useTasks } from '../../hooks/useTasks';
+import { useAuth } from '../../hooks/useAuth';
 
-export default function TaskListScreen() {
-  const { tasks, toggleTask, deleteTask } = useTasks();
+export default function LoginScreen() {
+  const [isRegister, setIsRegister] = useState(false);
+  const [identifier, setIdentifier] = useState(''); // For login (now email)
+  const [name, setName] = useState(''); // For register
+  const [email, setEmail] = useState(''); // For register
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { register, login } = useAuth();
   const router = useRouter();
 
-  const handleDelete = (id: string) => {
-    Alert.alert('Delete Task', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteTask(id),
-      },
-    ]);
-  };
-
-  const handleEdit = (id: string) => {
-    router.push({
-      pathname: '/(tabs)/Edit',
-      params: { id },
-    });
+  const handleSubmit = async () => {
+    if (isRegister) {
+      if (!name.trim() || !email.trim() || !password.trim()) {
+        Alert.alert('Error', 'Please fill out all fields.');
+        return;
+      }
+      setLoading(true);
+      const success = await register(name, email, password);
+      setLoading(false);
+      if (success) {
+        router.replace('/');
+      } else {
+        Alert.alert('Registration Failed', 'Could not create account.');
+      }
+    } else {
+      if (!identifier.trim() || !password.trim()) {
+        Alert.alert('Error', 'Please fill out both fields.');
+        return;
+      }
+      setLoading(true);
+      const success = await login(identifier, password); 
+      setLoading(false);
+      if (success) {
+        router.replace('/Task'); // Redirect to Task list on successful login
+      } else {
+        Alert.alert('Login Failed', 'Invalid credentials.');
+      }
+    }
   };
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={tasks}
-        keyExtractor={(t) => t.id}
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.title, item.done && styles.done]}>
-                {item.title}
-              </Text>
-              <Text style={styles.assignee}>
-                Assigned to: {item.assigneeId}
-              </Text>
-            </View>
-
-            <View style={styles.buttons}>
-              <Pressable
-                onPress={() => toggleTask(item.id)}
-                style={styles.doneButton}
-              >
-                <Text style={styles.buttonText}>
-                  {item.done ? 'Undo' : 'Done'}
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => handleEdit(item.id)}
-                style={styles.editButton}
-              >
-                <Text style={styles.buttonText}>Edit</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => handleDelete(item.id)}
-                style={styles.deleteButton}
-              >
-                <Text style={styles.buttonText}>Delete</Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
-        contentContainerStyle={{ paddingBottom: 100 }}
-      />
-
+      <Text style={styles.header}>{isRegister ? 'Register' : 'Login'}</Text>
+      {!isRegister ? (
+        <>
+          <TextInput
+            placeholder="Email"
+            autoCapitalize="none"
+            value={identifier}
+            onChangeText={setIdentifier}
+            style={styles.input}
+          />
+          <TextInput
+            placeholder="Password"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+            style={styles.input}
+          />
+        </>
+      ) : (
+        <>
+          <TextInput
+            placeholder="Name"
+            autoCapitalize="none"
+            value={name}
+            onChangeText={setName}
+            style={styles.input}
+          />
+          <TextInput
+            placeholder="Email"
+            autoCapitalize="none"
+            value={email}
+            onChangeText={setEmail}
+            style={styles.input}
+          />
+          <TextInput
+            placeholder="Password"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+            style={styles.input}
+          />
+        </>
+      )}
       <Pressable
-        style={styles.addButton}
-        onPress={() => router.push('/(tabs)/Add')}
+        onPress={handleSubmit}
+        style={styles.button}
+        disabled={loading}
       >
-        <Text style={styles.addText}>+ Add Task</Text>
+        {loading ? (
+          <ActivityIndicator />
+        ) : (
+          <Text style={styles.buttonText}>{isRegister ? 'Register' : 'Login'}</Text>
+        )}
+      </Pressable>
+      <Pressable onPress={() => setIsRegister(!isRegister)}>
+        <Text style={styles.switchText}>
+          {isRegister ? 'Switch to Login' : 'Switch to Register'}
+        </Text>
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: '#fff' },
-
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderColor: '#eee',
+  container: {
+    flex: 1,
+    padding: 24,
+    justifyContent: 'center',
+    backgroundColor: '#fff',
   },
-
-  title: { fontSize: 16, fontWeight: '500' },
-
-  done: {
-    textDecorationLine: 'line-through',
-    color: '#999',
+  header: {
+    fontSize: 28,
+    fontWeight: '600',
+    marginBottom: 32,
+    textAlign: 'center',
   },
-
-  assignee: { fontSize: 12, color: '#666', marginTop: 4 },
-
-  buttons: {
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    marginLeft: 10,
-    gap: 8,
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    fontSize: 16,
   },
-
-  doneButton: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 4,
-  },
-
-  editButton: {
+  button: {
     backgroundColor: '#2196F3',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 4,
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
   },
-
-  deleteButton: {
-    backgroundColor: '#f44336',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 4,
-  },
-
-  buttonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-
-  addButton: {
-    position: 'absolute',
-    right: 16,
-    bottom: 32,
-    backgroundColor: '#4CAF50',
-    padding: 16,
-    borderRadius: 32,
-    elevation: 3,
-  },
-
-  addText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: '500' },
+  switchText: {
+    marginTop: 16,
+    textAlign: 'center',
+    color: '#2196F3',
   },
 });

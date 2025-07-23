@@ -1,47 +1,69 @@
-import { useState, useEffect } from 'react';
+import { Server_Url } from '@/constants/Apikeys';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
+import { useEffect, useState } from 'react';
 
 export interface User {
   id: string;
-  username: string;
-  password: string;
+  name: string;
+  email: string;
 }
 
-const users: User[] = [
-  { id: '1', username: 'user1', password: 'pass1' },
-  { id: '2', username: 'user2', password: 'pass2' },
-];
+const API_URL = Server_Url;
 
 export function useAuth() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadCurrentUser() {
-      const userId = await AsyncStorage.getItem('currentUserId');
-      if (userId) {
-        const user = users.find(u => u.id === userId);
-        if (user) {
-          setCurrentUser(user);
+      const token = await AsyncStorage.getItem('token');
+      if (token) {
+        try {
+          const response = await axios.get(`${API_URL}/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          setCurrentUser(response.data.user);
+        } catch (error) {
+          console.error('Failed to load user:', error);
+          await AsyncStorage.removeItem('token');
         }
       }
+      setLoading(false);
     }
     loadCurrentUser();
   }, []);
 
-  const login = async (username: string, password: string) => {
-    const user = users.find(u => u.username === username && u.password === password);
-    if (user) {
-      await AsyncStorage.setItem('currentUserId', user.id);
+  const register = async (name: string, email: string, password: string) => {
+    try {
+      const response = await axios.post(`${API_URL}/register`, { name, email, password });
+      const { token, user } = response.data;
+      await AsyncStorage.setItem('token', token);
       setCurrentUser(user);
       return true;
+    } catch (error) {
+      console.error('Registration failed:', error);
+      return false;
     }
-    return false;
+  };
+
+  const login = async (email: string, password: string) => {
+    try {
+      const response = await axios.post(`${API_URL}/login`, { email, password });
+      const { token, user } = response.data;
+      await AsyncStorage.setItem('token', token);
+      setCurrentUser(user);
+      return true;
+    } catch (error) {
+      console.error('Login failed:', error);
+      return false;
+    }
   };
 
   const logout = async () => {
-    await AsyncStorage.removeItem('currentUserId');
+    await AsyncStorage.removeItem('token');
     setCurrentUser(null);
   };
 
-  return { currentUser, login, logout, users };
+  return { currentUser, loading, register, login, logout };
 }

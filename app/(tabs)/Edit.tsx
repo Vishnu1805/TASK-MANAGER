@@ -1,7 +1,6 @@
-// app/Edit.tsx
+// Edit.tsx
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Picker } from '@react-native-picker/picker';
-import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   Alert,
   Pressable,
@@ -10,33 +9,32 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useAuth } from '../../hooks/useAuth';
 import { useTasks } from '../../hooks/useTasks';
 
 export default function EditTaskScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { tasks, updateTask } = useTasks();
-  const { users } = useAuth();
 
-  const task = tasks.find((t) => t.id === id);
+  const task = tasks.find((t) => t._id === id);
   const [title, setTitle] = useState(task?.title ?? '');
-  const [assigneeId, setAssigneeId] = useState(task?.assigneeId ?? '');
+  const [description, setDescription] = useState(task?.description ?? '');
+  const [status, setStatus] = useState(task?.status ?? 'pending');
+  const [dueDate, setDueDate] = useState(task?.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '');
 
   useEffect(() => {
     if (!task) {
-      // invalid id → back to list
       router.replace('/');
     }
   }, [task]);
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     if (!task) return;
-    if (!title.trim() || !assigneeId) {
-      Alert.alert('Error', 'Please fill out both fields.');
+    if (!title.trim()) {
+      Alert.alert('Error', 'Title is required.');
       return;
     }
-    updateTask(task.id, { title, assigneeId });
+    await updateTask(task._id, { title, description, status, dueDate });
     Alert.alert('Success', 'Task updated!');
     router.replace('/');
   };
@@ -52,19 +50,24 @@ export default function EditTaskScreen() {
         value={title}
         onChangeText={setTitle}
       />
-      <Picker
-        selectedValue={assigneeId}
-        onValueChange={setAssigneeId}
-        style={styles.picker}
-      >
-        {users.map((u) => (
-          <Picker.Item
-            key={u.id}
-            label={u.username}
-            value={u.id}
-          />
-        ))}
-      </Picker>
+      <TextInput
+        style={styles.input}
+        placeholder="Description"
+        value={description}
+        onChangeText={setDescription}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Status (pending, in_progress, completed)"
+        value={status}
+        onChangeText={setStatus}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Due Date (YYYY-MM-DD)"
+        value={dueDate}
+        onChangeText={setDueDate}
+      />
       <Pressable onPress={handleUpdate} style={styles.button}>
         <Text style={styles.buttonText}>Save Changes</Text>
       </Pressable>
@@ -92,11 +95,6 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 16,
     fontSize: 16,
-  },
-  picker: {
-    height: 50,
-    width: '100%',
-    marginBottom: 24,
   },
   button: {
     backgroundColor: '#2196F3',

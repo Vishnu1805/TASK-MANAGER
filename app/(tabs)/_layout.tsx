@@ -1,32 +1,24 @@
-// app/_layout.tsx
 import { Stack } from 'expo-router';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../hooks/useAuth'; 
 
 export default function RootLayout() {
   const { currentUser } = useAuth();
 
   return (
     <Stack>
-      {/*
-        If not logged in, show Login first (no header).
-      */}
-      {!currentUser ? (
-        <Stack.Screen
-          name="Login"
-          options={{ headerShown: false }}
-        />
-      ) : null}
-
-      {/*
-        Once authenticated, the rest of the app:
-        index → add → Edit
-      */}
+      {/* Always show index first */}
       <Stack.Screen
         name="index"
+        options={{ headerShown: false }}
+      />
+
+      {/* Protect other screens if needed */}
+      <Stack.Screen
+        name="Task"
         options={{ title: 'Tasks' }}
       />
       <Stack.Screen
-        name="add"
+        name="Add"
         options={{ title: 'Add Task' }}
       />
       <Stack.Screen
