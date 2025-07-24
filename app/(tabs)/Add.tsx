@@ -26,7 +26,7 @@ export default function AddTaskScreen() {
     }
     await addTask(title, description, status, dueDate);
     Alert.alert('Success', 'Task added!');
-    router.replace('/');
+    router.replace('/(tabs)/Task');
   };
 
   return (
