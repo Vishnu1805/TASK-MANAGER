@@ -1,4 +1,3 @@
-// Login.tsx
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -14,7 +13,7 @@ import { useAuth } from '../../hooks/useAuth';
 
 export default function LoginScreen() {
   const [isRegister, setIsRegister] = useState(false);
-  const [identifier, setIdentifier] = useState(''); // For login (now email)
+  const [identifier, setIdentifier] = useState(''); // Email for login
   const [name, setName] = useState(''); // For register
   const [email, setEmail] = useState(''); // For register
   const [password, setPassword] = useState('');
@@ -22,32 +21,66 @@ export default function LoginScreen() {
   const { register, login } = useAuth();
   const router = useRouter();
 
+  // Basic email validation
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const handleSubmit = async () => {
     if (isRegister) {
+      // Registration flow
       if (!name.trim() || !email.trim() || !password.trim()) {
         Alert.alert('Error', 'Please fill out all fields.');
         return;
       }
+      if (!validateEmail(email)) {
+        Alert.alert('Error', 'Please enter a valid email address.');
+        return;
+      }
       setLoading(true);
-      const success = await register(name, email, password);
-      setLoading(false);
-      if (success) {
-        router.replace('/');
-      } else {
-        Alert.alert('Registration Failed', 'Could not create account.');
+      try {
+        const success = await register(name, email, password);
+        if (success) {
+          router.replace('/');
+        } else {
+          Alert.alert('Registration Failed', 'Could not create account. Please try again.');
+        }
+      } catch (error: any) {
+        console.error('Registration error:', error);
+        Alert.alert('Error', error.message || 'An unexpected error occurred.');
+      } finally {
+        setLoading(false);
       }
     } else {
+      // Login flow
       if (!identifier.trim() || !password.trim()) {
         Alert.alert('Error', 'Please fill out both fields.');
         return;
       }
+      if (!validateEmail(identifier)) {
+        Alert.alert('Error', 'Please enter a valid email address.');
+        return;
+      }
       setLoading(true);
-      const success = await login(identifier, password); 
-      setLoading(false);
-      if (success) {
-        router.replace('/Task'); // Redirect to Task list on successful login
-      } else {
-        Alert.alert('Login Failed', 'Invalid credentials.');
+      try {
+        console.log('Login attempt with:', { email: identifier, password });
+        const success = await login(identifier, password);
+        if (success) {
+          console.log('Login successful');
+          router.replace('/Task');
+        } else {
+          Alert.alert('Login Failed', 'Invalid email or password.');
+        }
+      } catch (error: any) {
+        console.error('Login error:', error);
+        if (error.response?.status === 401) {
+          Alert.alert('Login Failed', 'Unauthorized: Check your email and password.');
+        } else {
+          Alert.alert('Error', error.message || 'An unexpected error occurred.');
+        }
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -97,11 +130,7 @@ export default function LoginScreen() {
           />
         </>
       )}
-      <Pressable
-        onPress={handleSubmit}
-        style={styles.button}
-        disabled={loading}
-      >
+      <Pressable onPress={handleSubmit} style={styles.button} disabled={loading}>
         {loading ? (
           <ActivityIndicator />
         ) : (

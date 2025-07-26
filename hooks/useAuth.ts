@@ -17,19 +17,30 @@ export function useAuth() {
 
   useEffect(() => {
     async function loadCurrentUser() {
-      const token = await AsyncStorage.getItem('token');
-      if (token) {
-        try {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        console.log('Token:', token);
+        if (token) {
           const response = await axios.get(`${API_URL}/me`, {
             headers: { Authorization: `Bearer ${token}` },
           });
+          console.log('User response:', response.data);
           setCurrentUser(response.data.user);
-        } catch (error) {
-          console.error('Failed to load user:', error);
-          await AsyncStorage.removeItem('token');
         }
+      } catch (error) {
+        console.error('Failed to load user:', error);
+        if (axios.isAxiosError(error)) {
+          console.error('Error details:', error.response?.status, error.response?.data);
+          if (error.response?.status === 404) {
+            console.error('Endpoint /me not found. Check Server_Url:', API_URL);
+          } else if (error.response?.status === 401) {
+            await AsyncStorage.removeItem('token');
+            console.log('Token removed due to 401');
+          }
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     loadCurrentUser();
   }, []);
@@ -40,10 +51,14 @@ export function useAuth() {
       const { token, user } = response.data;
       await AsyncStorage.setItem('token', token);
       setCurrentUser(user);
+      console.log('Registered user:', user);
       return true;
     } catch (error) {
-      console.error('Registration failed:', error);
-      return false;
+      if (axios.isAxiosError(error)) {
+        console.error('Registration error:', error.response?.data);
+        throw new Error(error.response?.data.error || 'Registration failed');
+      }
+      throw new Error('An unexpected error occurred during registration');
     }
   };
 
@@ -53,16 +68,26 @@ export function useAuth() {
       const { token, user } = response.data;
       await AsyncStorage.setItem('token', token);
       setCurrentUser(user);
+      console.log('Logged in user:', user);
       return true;
     } catch (error) {
-      console.error('Login failed:', error);
-      return false;
+      if (axios.isAxiosError(error)) {
+        console.error('Login error:', error.response?.data);
+        throw new Error(error.response?.data.error || 'Login failed');
+      }
+      throw new Error('An unexpected error occurred during login');
     }
   };
 
   const logout = async () => {
-    await AsyncStorage.removeItem('token');
-    setCurrentUser(null);
+    try {
+      await AsyncStorage.removeItem('token');
+      setCurrentUser(null);
+      console.log('Logged out');
+    } catch (error) {
+      console.error('Failed to logout:', error);
+      throw new Error('Could not complete logout');
+    }
   };
 
   return { currentUser, loading, register, login, logout };

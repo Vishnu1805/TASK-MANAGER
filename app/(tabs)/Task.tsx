@@ -1,4 +1,3 @@
-// Task.tsx
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
@@ -12,8 +11,14 @@ import {
 import { useTasks } from '../../hooks/useTasks';
 
 export default function TaskListScreen() {
-  const { tasks, toggleTask, deleteTask } = useTasks();
+  const { tasks, users, toggleTask, deleteTask } = useTasks();
   const router = useRouter();
+
+  const getAssigneeNames = (assigneeIds: string[]) => {
+    return assigneeIds
+      .map(id => users.find(u => u.id === id)?.name || 'Unknown')
+      .join(', ');
+  };
 
   const handleDelete = (id: string) => {
     Alert.alert('Delete Task', 'Are you sure?', [
@@ -33,10 +38,14 @@ export default function TaskListScreen() {
     });
   };
 
+  // Filter tasks to show only those assigned to the current user (assuming user context is available)
+  const currentUserId = 'currentUserId'; // Replace with actual user ID from auth context
+  const userTasks = tasks.filter(task => task.assignees.includes(currentUserId) || task.assignees.length === 0);
+
   return (
     <View style={styles.container}>
       <FlatList
-        data={tasks}
+        data={userTasks}
         keyExtractor={(t) => t._id}
         renderItem={({ item }) => (
           <View style={styles.row}>
@@ -44,9 +53,9 @@ export default function TaskListScreen() {
               <Text style={[styles.title, item.status === 'completed' && styles.done]}>
                 {item.title}
               </Text>
-              <Text style={styles.assignee}>
-                Status: {item.status}
-              </Text>
+              <Text style={styles.priority}>Priority: {item.priority}</Text>
+              <Text style={styles.dueDate}>Due: {item.dueDate || 'No due date'}</Text>
+              <Text style={styles.assignee}>Assignees: {getAssigneeNames(item.assignees)}</Text>
             </View>
 
             <View style={styles.buttons}>
@@ -102,6 +111,8 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: '#999',
   },
+  priority: { fontSize: 12, color: '#666', marginTop: 4 },
+  dueDate: { fontSize: 12, color: '#666', marginTop: 4 },
   assignee: { fontSize: 12, color: '#666', marginTop: 4 },
   buttons: {
     flexDirection: 'column',
