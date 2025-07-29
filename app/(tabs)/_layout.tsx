@@ -1,5 +1,6 @@
+//layout.tsx
 import { Stack } from 'expo-router';
-import { useAuth } from '../../hooks/useAuth'; 
+import { useAuth } from '../../hooks/useAuth';
 
 export default function RootLayout() {
   const { currentUser } = useAuth();

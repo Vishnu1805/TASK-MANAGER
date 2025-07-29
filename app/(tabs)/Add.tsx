@@ -11,120 +11,131 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useTasks } from '../../hooks/useTasks';
+import { User, useTasks } from '../../hooks/useTasks';
 
 export default function AddTaskScreen() {
+  const router = useRouter();
+  const { users, fetchUsers, addTask } = useTasks();
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<'urgent' | 'medium' | 'low'>('medium');
-  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [search, setSearch] = useState('');
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [assignees, setAssignees] = useState<string[]>([]);
-  const { addTask, users, fetchUsers } = useTasks();
-  const router = useRouter();
 
   useEffect(() => {
-    fetchUsers(''); // Fetch users when the component mounts
-  }, [fetchUsers]);
+    fetchUsers();
+  }, []);
 
-  const toggleAssignee = (id: string) => {
-    setAssignees(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+  // update suggestions as user types
+  useEffect(() => {
+    const lower = search.toLowerCase();
+    setFilteredUsers(
+      users.filter(u => u.name.toLowerCase().includes(lower) && !assignees.includes(u.id))
     );
-  };
+  }, [search, users, assignees]);
 
-  const onDateChange = (event: React.ChangeEvent<HTMLInputElement> | any) => {
-    const date = event.target ? new Date(event.target.value) : new Date(event.nativeEvent.timestamp);
-    setSelectedDate(date);
-  };
+  const toggleAssignee = (id: string) =>
+    setAssignees(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
 
   const handleAdd = async () => {
     if (!title.trim()) {
-      Alert.alert('Error', 'Title is required.');
-      return;
+      return Alert.alert('Error', 'Title is required.');
     }
-    const dueDateStr = selectedDate?.toISOString().split('T')[0] || '';
+    const dueDateStr = selectedDate.toISOString();
     await addTask(title, description, priority, dueDateStr, assignees);
-    Alert.alert('Success', 'Task assigned!');
-    router.replace('/(tabs)/Task');
-  };
-
-  const renderUser = ({ item }: { item: { id: string; name: string } }) => {
-    const selected = assignees.includes(item.id);
-    return (
-      <TouchableOpacity
-        style={[styles.userItem, selected && styles.userItemSelected]}
-        onPress={() => toggleAssignee(item.id)}
-      >
-        <Text style={styles.userName}>{item.name}</Text>
-        {selected && <Text style={styles.checkMark}>✓</Text>}
-      </TouchableOpacity>
-    );
+    Alert.alert('Success', 'Task created!');
+    router.replace('/(tabs)/Task'); // back to list
   };
 
   return (
     <View style={styles.container}>
-      {/* Title & Description */}
       <TextInput
-        style={styles.input}
         placeholder="Task Title"
+        style={styles.input}
         value={title}
         onChangeText={setTitle}
       />
       <TextInput
-        style={styles.input}
         placeholder="Description"
+        style={[styles.input, { height: 80 }]}
         value={description}
         onChangeText={setDescription}
+        multiline
       />
 
-      {/* Priority */}
       <Text style={styles.label}>Priority:</Text>
-      <View style={styles.statusContainer}>
+      <View style={styles.row}>
         {(['urgent', 'medium', 'low'] as const).map(level => (
           <Pressable
             key={level}
-            style={[
-              styles.statusBtn,
-              priority === level && styles.statusBtnSelected,
-            ]}
+            style={[styles.statusBtn, priority === level && styles.statusBtnSelected]}
             onPress={() => setPriority(level)}
           >
-            <Text style={styles.statusText}>
-              {level.charAt(0).toUpperCase() + level.slice(1)}
-            </Text>
+            <Text>{level.charAt(0).toUpperCase() + level.slice(1)}</Text>
           </Pressable>
         ))}
       </View>
 
-      {/* Due Date */}
       <Text style={styles.label}>Due Date:</Text>
       {Platform.OS === 'web' ? (
         <input
           type="date"
           style={styles.webInput}
-          value={selectedDate ? selectedDate.toISOString().split('T')[0] : ''}
-          onChange={onDateChange}
+          value={selectedDate.toISOString().split('T')[0]}
+          onChange={e => setSelectedDate(new Date(e.target.value))}
           min={new Date().toISOString().split('T')[0]}
         />
       ) : (
-        <TouchableOpacity onPress={() => setSelectedDate(new Date())}>
-          <Text style={styles.input}>
-            {selectedDate ? selectedDate.toDateString() : 'Select a date'}
-          </Text>
-        </TouchableOpacity>
+        <Pressable onPress={() => setSelectedDate(new Date())}>
+          <Text style={styles.input}>{selectedDate.toDateString()}</Text>
+        </Pressable>
       )}
 
-      {/* Assignees */}
       <Text style={styles.label}>Assign to:</Text>
-      <FlatList
-        data={users}
-        keyExtractor={u => u.id}
-        renderItem={renderUser}
-        horizontal
-        contentContainerStyle={{ paddingVertical: 8 }}
+      <TextInput
+        placeholder="Type name..."
+        style={styles.input}
+        value={search}
+        onChangeText={setSearch}
       />
+      {filteredUsers.length > 0 && (
+        <FlatList
+          data={filteredUsers}
+          keyExtractor={u => u.id}
+          style={styles.suggestions}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.suggestionItem}
+              onPress={() => {
+                toggleAssignee(item.id);
+                setSearch('');
+              }}
+            >
+              <Text>{item.name}</Text>
+            </TouchableOpacity>
+          )}
+        />
+      )}
 
-      {/* Add Button */}
+      {assignees.length > 0 && (
+        <View style={styles.chipsContainer}>
+          {assignees.map(id => {
+            const user = users.find(u => u.id === id);
+            return (
+              <View key={id} style={styles.chip}>
+                <Text>{user?.name || 'Unknown'}</Text>
+                <Pressable onPress={() => toggleAssignee(id)}>
+                  <Text style={styles.remove}>×</Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
       <Pressable style={styles.button} onPress={handleAdd}>
         <Text style={styles.buttonText}>Add Task</Text>
       </Pressable>
@@ -133,55 +144,70 @@ export default function AddTaskScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: '#fff', justifyContent: 'center' },
+  container: { flex: 1, padding: 16, backgroundColor: '#fff' },
   input: {
     borderWidth: 1,
     borderColor: '#ccc',
     borderRadius: 8,
     padding: 10,
-    marginBottom: 16,
+    marginBottom: 12,
     fontSize: 16,
   },
   webInput: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 16,
-    fontSize: 16,
-    width: '100%',
+    ...Platform.select({
+      web: {
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 8,
+        padding: 10,
+        marginBottom: 12,
+        fontSize: 16,
+        width: '100%',
+      },
+    }),
   },
-  label: { fontSize: 16, marginBottom: 8, fontWeight: '500' },
-  statusContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
+  label: { fontSize: 14, fontWeight: '500', marginBottom: 6 },
+  row: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   statusBtn: {
     flex: 1,
     padding: 10,
-    marginHorizontal: 4,
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
+    borderColor: '#888',
+    borderRadius: 6,
     alignItems: 'center',
   },
-  statusBtnSelected: { backgroundColor: '#4CAF50', borderColor: '#4CAF50' },
-  statusText: { fontSize: 14, fontWeight: '500' },
-  userItem: {
-    padding: 8,
+  statusBtnSelected: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
+  },
+  suggestions: {
+    maxHeight: 120,
+    marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    marginRight: 8,
+    borderColor: '#eee',
+    borderRadius: 6,
+  },
+  suggestionItem: {
+    padding: 10,
+    borderBottomWidth: 1,
+    borderColor: '#eee',
+  },
+  chipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#e0f2f1',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  userItemSelected: { backgroundColor: '#4CAF50' },
-  userName: { color: '#000', marginRight: 5 },
-  checkMark: { color: '#fff', fontWeight: 'bold' },
+  remove: { marginLeft: 4, color: '#b00020', fontWeight: 'bold' },
   button: {
     backgroundColor: '#4CAF50',
-    padding: 12,
+    padding: 14,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 'auto',
   },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
 });

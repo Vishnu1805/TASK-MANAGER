@@ -19,29 +19,22 @@ export function useAuth() {
     async function loadCurrentUser() {
       try {
         const token = await AsyncStorage.getItem('token');
-        console.log('Token:', token);
-        if (token) {
-          const response = await axios.get(`${API_URL}/me`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          console.log('User response:', response.data);
-          setCurrentUser(response.data.user);
+        const userJson = await AsyncStorage.getItem('user');
+
+        if (token && userJson) {
+          const user: User = JSON.parse(userJson);
+          setCurrentUser(user);
         }
+
+        // Optional: validate token with /me endpoint
+        // If not needed, you can skip this call entirely
       } catch (error) {
-        console.error('Failed to load user:', error);
-        if (axios.isAxiosError(error)) {
-          console.error('Error details:', error.response?.status, error.response?.data);
-          if (error.response?.status === 404) {
-            console.error('Endpoint /me not found. Check Server_Url:', API_URL);
-          } else if (error.response?.status === 401) {
-            await AsyncStorage.removeItem('token');
-            console.log('Token removed due to 401');
-          }
-        }
+        console.error('Failed to load user from storage:', error);
       } finally {
         setLoading(false);
       }
     }
+
     loadCurrentUser();
   }, []);
 
@@ -49,9 +42,13 @@ export function useAuth() {
     try {
       const response = await axios.post(`${API_URL}/register`, { name, email, password });
       const { token, user } = response.data;
+
+      // Save both token and user
       await AsyncStorage.setItem('token', token);
+      await AsyncStorage.setItem('user', JSON.stringify(user));
+
       setCurrentUser(user);
-      console.log('Registered user:', user);
+      console.log('✅ Registered and saved user:', user);
       return true;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -66,9 +63,13 @@ export function useAuth() {
     try {
       const response = await axios.post(`${API_URL}/login`, { email, password });
       const { token, user } = response.data;
+
+      // Save both token and user
       await AsyncStorage.setItem('token', token);
+      await AsyncStorage.setItem('user', JSON.stringify(user));
+
       setCurrentUser(user);
-      console.log('Logged in user:', user);
+      console.log('✅ Logged in and saved user:', user);
       return true;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -82,8 +83,9 @@ export function useAuth() {
   const logout = async () => {
     try {
       await AsyncStorage.removeItem('token');
+      await AsyncStorage.removeItem('user'); // ✅ also remove user info
       setCurrentUser(null);
-      console.log('Logged out');
+      console.log('👋 Logged out');
     } catch (error) {
       console.error('Failed to logout:', error);
       throw new Error('Could not complete logout');

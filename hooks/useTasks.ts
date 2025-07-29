@@ -1,7 +1,7 @@
 import { Task_API_URL } from '@/constants/Apikeys';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export interface Task {
   _id: string;
@@ -14,119 +14,193 @@ export interface Task {
   userId: string;
 }
 
+export interface User {
+  id: string;
+  name: string;
+}
+
 const API_URL = Task_API_URL;
+const USERS_URL = 'http://localhost:3000/api/users';
 
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Load tasks and users on component mount
   useEffect(() => {
-    async function loadInitialData() {
+    (async () => {
       const token = await AsyncStorage.getItem('token');
-      console.log('Initial token:', token);
       if (token) {
-        try {
-          await Promise.all([fetchTasks(token), fetchUsers(token)]);
-        } catch (error) {
-          console.error('Failed to load initial data:', error);
-          if (axios.isAxiosError(error)) {
-            console.error('Error details:', error.response?.status, error.response?.data);
-            if (error.response?.status === 404) {
-              console.error('Endpoint not found. Check API_URL:', API_URL);
-            }
-          }
-        }
+        await Promise.all([fetchTasks(), fetchUsers()]);
+      } else {
+        console.warn('🔒 No token found in AsyncStorage. Skipping fetch.');
       }
       setLoading(false);
-    }
-    loadInitialData();
+    })();
   }, []);
 
-  const fetchTasks = async (token: string) => {
-    const response = await axios.get(API_URL, { headers: { Authorization: `Bearer ${token}` } });
-    console.log('Fetched tasks:', response.data);
-    setTasks(response.data);
-  };
-
-  const fetchUsers = async (token: string) => {
-    const response = await axios.get('http://localhost:3000/api/users', { headers: { Authorization: `Bearer ${token}` } });
-    // console.log('Fetched users:', response.data);
-    setUsers(response.data);
-  };
-
-  const addTask = async (
-    title: string,
-    description: string,
-    priority: 'urgent' | 'medium' | 'low',
-    dueDate: string,
-    assignees: string[]
-  ) => {
+  const fetchTasks = useCallback(async () => {
     const token = await AsyncStorage.getItem('token');
-    if (token) {
-      try {
-        const response = await axios.post(
-          API_URL,
-          { title, description, status: 'pending', priority, dueDate, assignees },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        console.log('Added task:', response.data);
-        setTasks([...tasks, response.data]);
-      } catch (error) {
-        console.error('Failed to add task:', error);
-      }
+    if (!token) {
+      console.warn('❌ Cannot fetch tasks — missing token.');
+      return;
     }
-  };
 
-  const toggleTask = async (id: string) => {
-    const token = await AsyncStorage.getItem('token');
-    if (token) {
-      try {
-        const task = tasks.find(t => t._id === id);
-        if (task) {
-          const updatedStatus = task.status === 'completed' ? 'pending' : 'completed';
-          const response = await axios.put(
-            `${API_URL}/${id}`,
-            { status: updatedStatus },
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-          setTasks(tasks.map(t => (t._id === id ? response.data : t)));
-        }
-      } catch (error) {
-        console.error('Failed to toggle task:', error);
-      }
+    try {
+      const { data } = await axios.get<Task[]>(API_URL, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setTasks(data);
+    } catch (error) {
+      console.error('❌ Failed to fetch tasks:', error);
     }
-  };
+  }, []);
 
-  const deleteTask = async (id: string) => {
+  const fetchUsers = useCallback(async () => {
     const token = await AsyncStorage.getItem('token');
-    if (token) {
+    if (!token) {
+      console.warn('❌ Cannot fetch users — missing token.');
+      return;
+    }
+
+    try {
+      const { data } = await axios.get<User[]>(USERS_URL, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setUsers(data);
+    } catch (error) {
+      console.error('❌ Failed to fetch users:', error);
+    }
+  }, []);
+
+  const addTask = useCallback(
+    async (
+      title: string,
+      description: string,
+      priority: Task['priority'],
+      dueDate: string,
+      assignees: string[]
+    ) => {
+      const token = await AsyncStorage.getItem('token');
+      const userJson = await AsyncStorage.getItem('user');
+      const user = userJson ? JSON.parse(userJson) : null;
+
+      if (!token || !user?.id) {
+        console.warn('⚠️ Missing token or user ID');
+        console.log('token:', token);
+        console.log('user:', user);
+        return;
+      }
+
+      const payload = {
+        title,
+        description,
+        status: 'pending',
+        priority,
+        dueDate,
+        assignees,
+        userId: user.id,
+      };
+
       try {
-        await axios.delete(`${API_URL}/${id}`, {
+        console.log('📤 Creating task with payload:', payload);
+
+        await axios.post(API_URL, payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setTasks(tasks.filter(t => t._id !== id));
-      } catch (error) {
-        console.error('Failed to delete task:', error);
-      }
-    }
-  };
 
-  const updateTask = async (id: string, updates: Partial<Task>) => {
-    const token = await AsyncStorage.getItem('token');
-    if (token) {
+        await fetchTasks(); // refresh task list
+        console.log('✅ Task created and tasks list refreshed');
+      } catch (error) {
+        console.error('❌ Failed to add task:', error);
+      }
+    },
+    [fetchTasks]
+  );
+
+  const toggleTask = useCallback(
+    async (taskId: string, newStatus: Task['status']) => {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        console.warn('❌ Cannot toggle task — missing token.');
+        return;
+      }
+
       try {
-        const response = await axios.put(
-          `${API_URL}/${id}`,
-          updates,
+        await axios.patch(
+          `${API_URL}/${taskId}`,
+          { status: newStatus },
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setTasks(tasks.map(t => (t._id === id ? response.data : t)));
-      } catch (error) {
-        console.error('Failed to update task:', error);
-      }
-    }
-  };
 
-  return { tasks, users, loading, addTask, toggleTask, deleteTask, updateTask, fetchUsers };
+        setTasks(tasks =>
+          tasks.map(task =>
+            task._id === taskId ? { ...task, status: newStatus } : task
+          )
+        );
+      } catch (error) {
+        console.error('❌ Failed to toggle task status:', error);
+      }
+    },
+    []
+  );
+
+  const deleteTask = useCallback(
+    async (taskId: string) => {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        console.warn('❌ Cannot delete task — missing token.');
+        return;
+      }
+
+      try {
+        await axios.delete(`${API_URL}/${taskId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        setTasks(tasks => tasks.filter(task => task._id !== taskId));
+      } catch (error) {
+        console.error('❌ Failed to delete task:', error);
+      }
+    },
+    []
+  );
+
+  const updateTask = useCallback(
+    async (taskId: string, updates: Partial<Task>) => {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        console.warn('❌ Cannot update task — missing token.');
+        return;
+      }
+
+      try {
+        await axios.patch(`${API_URL}/${taskId}`, updates, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        setTasks(tasks =>
+          tasks.map(task =>
+            task._id === taskId ? { ...task, ...updates } : task
+          )
+        );
+      } catch (error) {
+        console.error('❌ Failed to update task:', error);
+      }
+    },
+    []
+  );
+
+  return {
+    tasks,
+    users,
+    loading,
+    fetchTasks,
+    fetchUsers,
+    addTask,
+    toggleTask,
+    deleteTask,
+    updateTask,
+  };
 }
