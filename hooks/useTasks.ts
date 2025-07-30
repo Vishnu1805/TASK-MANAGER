@@ -1,4 +1,4 @@
-import { Task_API_URL } from '@/constants/Apikeys';
+import { Task_API_URL, User_API_URL } from '@/constants/Apikeys';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { useCallback, useEffect, useState } from 'react';
@@ -20,7 +20,7 @@ export interface User {
 }
 
 const API_URL = Task_API_URL;
-const USERS_URL = 'http://localhost:3000/api/users';
+const USERS_URL = User_API_URL;
 
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
