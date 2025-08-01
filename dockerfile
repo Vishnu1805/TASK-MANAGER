@@ -7,17 +7,21 @@ COPY . .
 # Install dependencies
 RUN npm install
 
-# Set environment variable for Webpack bundler
+# Set environment variable for bundler
 ENV EXPO_USE_STATIC_WEBPACK_CONFIG=1
 
-# Export static web build
-RUN npx expo export:web
+# Export web build to custom folder
+RUN npx expo export --platform web --output-dir web-build
 
 # ---------- Stage 2: Serve with NGINX ----------
 FROM nginx:alpine
 
+# Clear default NGINX html content
 RUN rm -rf /usr/share/nginx/html/*
-COPY --from=builder /app/dist /usr/share/nginx/html
 
+# Copy exported static build
+COPY --from=builder /app/web-build /usr/share/nginx/html
+
+# Expose web port
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
