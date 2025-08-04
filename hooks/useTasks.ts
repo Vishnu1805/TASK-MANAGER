@@ -93,13 +93,17 @@ export function useTasks() {
         return;
       }
 
+      // Filter out invalid assignees and default to creator if none are valid
+      const validAssignees = assignees.filter(id => id != null && id !== '');
+      const finalAssignees = validAssignees.length > 0 ? validAssignees : [user.id];
+
       const payload = {
         title,
         description,
         status: 'pending',
         priority,
         dueDate,
-        assignees,
+        assignees: finalAssignees,
         userId: user.id,
       };
 

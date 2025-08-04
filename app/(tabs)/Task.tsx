@@ -1,10 +1,9 @@
-// app/(tabs)/Task.tsx
+// Task.tsx
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  Dimensions,
   FlatList,
   Modal,
   Pressable,
@@ -16,36 +15,28 @@ import {
 import { Swipeable } from 'react-native-gesture-handler';
 import { useTasks } from '../../hooks/useTasks';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-
 export default function TaskListScreen() {
-  const { tasks, users, toggleTask, deleteTask, fetchTasks } = useTasks();
+  const { tasks, toggleTask, deleteTask, fetchTasks } = useTasks();
   const router = useRouter();
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
+  const [loggedUserId, setLoggedUserId] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [toDeleteId, setToDeleteId] = useState<string | null>(null);
-
   const [snackbar, setSnackbar] = useState<string>('');
   const snackAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    fetchTasks();
-  }, []);
-
-  useEffect(() => {
     (async () => {
+      await fetchTasks();
       const userJson = await AsyncStorage.getItem('user');
       const user = userJson ? JSON.parse(userJson) : null;
-      setCurrentUserId(user?.id || null);
+      setLoggedUserId(user?.id || null);
     })();
   }, []);
 
-  const getAssigneeNames = (assigneeIds: string[]) =>
-    assigneeIds.map(id => {
-      const user = users.find(u => u.id === id);
-      return user ? user.name : 'Unknown';
-    }).join(', ');
+  // Only show tasks where you are an assignee
+  const userTasks = tasks.filter(t =>
+    loggedUserId ? t.assignees.includes(loggedUserId) : false
+  );
 
   const showSnackbar = (message: string) => {
     setSnackbar(message);
@@ -75,30 +66,20 @@ export default function TaskListScreen() {
       await deleteTask(toDeleteId);
       await fetchTasks();
       showSnackbar('Task deleted');
-    } catch (err) {
-      console.error('Delete error:', err);
+    } catch {
       showSnackbar('Failed to delete');
     }
     setModalVisible(false);
-    setToDeleteId(null);
-  };
-
-  const handleEdit = (id: string) => {
-    router.push(`/Edit?id=${id}`);
   };
 
   const handleToggle = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
-    await toggleTask(id, newStatus as 'pending' | 'completed');
+    await toggleTask(id, newStatus);
   };
 
-  const renderRightActions = (
-    progress: Animated.AnimatedInterpolation<number>,
-    dragX: Animated.AnimatedInterpolation<number>,
-    id: string
-  ) => {
+  const renderRightActions = (progress: Animated.AnimatedInterpolation<string | number>, dragX: Animated.AnimatedInterpolation<string | number>, id: string) => {
     const scale = dragX.interpolate({
-      inputRange: [-SCREEN_WIDTH, 0],
+      inputRange: [-100, 0],
       outputRange: [1, 0],
       extrapolate: 'clamp',
     });
@@ -111,23 +92,13 @@ export default function TaskListScreen() {
     );
   };
 
-  const userTasks = tasks.filter(
-    t => currentUserId && (t.userId === currentUserId || t.assignees.includes(currentUserId))
-  );
-
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
         data={userTasks}
-        keyExtractor={(item) => {
-          if (!item._id) {
-            console.warn('⚠️ Missing _id on task:', item);
-            return Math.random().toString(); // fallback
-          }
-          return item._id;
-        }}
+        keyExtractor={item => item._id}
         renderItem={({ item }) => (
-          <Swipeable renderRightActions={(prog, dragX) => renderRightActions(prog, dragX, item._id)}>
+          <Swipeable renderRightActions={(p, d) => renderRightActions(p, d, item._id)}>
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.title, item.status === 'completed' && styles.done]}>
@@ -137,7 +108,9 @@ export default function TaskListScreen() {
                 <Text style={styles.meta}>
                   Due: {item.dueDate ? new Date(item.dueDate).toDateString() : '—'}
                 </Text>
-                <Text style={styles.meta}>Assignees: {getAssigneeNames(item.assignees)}</Text>
+                <Text style={styles.meta}>
+                  Assignees: {item.assignees.join(', ')}
+                </Text>
               </View>
               <View style={styles.buttons}>
                 <Pressable onPress={() => handleToggle(item._id, item.status)} style={styles.btn}>
@@ -145,29 +118,25 @@ export default function TaskListScreen() {
                     {item.status === 'completed' ? 'Undo' : 'Done'}
                   </Text>
                 </Pressable>
-                <Pressable onPress={() => handleEdit(item._id)} style={styles.btn}>
+                <Pressable onPress={() => router.push(`/Edit?id=${item._id}`)} style={styles.btn}>
                   <Text style={styles.btnText}>Edit</Text>
                 </Pressable>
               </View>
             </View>
           </Swipeable>
         )}
-        ListEmptyComponent={
-          <Text style={{ textAlign: 'center', marginTop: 20 }}>No tasks</Text>
-        }
+        ListEmptyComponent={<Text style={styles.empty}>No tasks assigned to you</Text>}
       />
 
+      {/* Floating Add Task Button */}
       <Pressable
         style={styles.fab}
-        onPress={async () => {
-          await fetchTasks();
-          router.push('/(tabs)/Add');
-        }}
+        onPress={() => router.push('/(tabs)/Add')}
       >
         <Text style={styles.fabText}>＋</Text>
       </Pressable>
 
-      {/* Modal */}
+      {/* Delete Confirmation Modal */}
       <Modal transparent visible={modalVisible} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -196,33 +165,14 @@ export default function TaskListScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  row: {
-    flexDirection: 'row',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderColor: '#eee',
-    alignItems: 'center',
-  },
+  row: { flexDirection: 'row', padding: 16, borderBottomWidth: 1, borderColor: '#eee' },
   title: { fontSize: 16, fontWeight: '600' },
   done: { textDecorationLine: 'line-through', color: '#999' },
   meta: { fontSize: 12, color: '#555', marginTop: 4 },
-  buttons: {
-    flexDirection: 'row',
-    gap: 8,
-    marginLeft: 8,
-  },
-  btn: {
-    backgroundColor: '#4CAF50',
-    padding: 6,
-    borderRadius: 4,
-  },
+  buttons: { flexDirection: 'row', gap: 8, marginLeft: 8 },
+  btn: { backgroundColor: '#4CAF50', padding: 6, borderRadius: 4 },
   btnText: { color: '#fff', fontSize: 12, fontWeight: '500' },
-  deleteAction: {
-    backgroundColor: '#f44336',
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    padding: 20,
-  },
+  deleteAction: { backgroundColor: '#f44336', justifyContent: 'center', alignItems: 'flex-end', padding: 20 },
   deleteText: { color: '#fff', fontWeight: '600', fontSize: 16 },
   fab: {
     position: 'absolute',
@@ -234,39 +184,16 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  fabText: { color: '#fff', fontSize: 32, lineHeight: 34 },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    width: '80%',
-    backgroundColor: '#fff',
-    padding: 24,
-    borderRadius: 8,
     elevation: 4,
   },
+  fabText: { color: '#fff', fontSize: 32, lineHeight: 34 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '80%', backgroundColor: '#fff', padding: 24, borderRadius: 8 },
   modalText: { fontSize: 18, marginBottom: 16, textAlign: 'center' },
   modalButtons: { flexDirection: 'row', justifyContent: 'space-between' },
-  modalBtnCancel: {
-    padding: 12,
-  },
-  modalBtnDelete: {
-    backgroundColor: '#f44336',
-    padding: 12,
-    borderRadius: 4,
-  },
-  snackbar: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 40,
-    backgroundColor: '#333',
-    padding: 12,
-    borderRadius: 8,
-  },
+  modalBtnCancel: { padding: 12 },
+  modalBtnDelete: { backgroundColor: '#f44336', padding: 12, borderRadius: 4 },
+  snackbar: { position: 'absolute', left: 20, right: 20, bottom: 40, backgroundColor: '#333', padding: 12, borderRadius: 8 },
   snackbarText: { color: '#fff', textAlign: 'center' },
+  empty: { textAlign: 'center', marginTop: 20 },
 });
