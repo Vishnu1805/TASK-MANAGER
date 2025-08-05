@@ -1,4 +1,3 @@
-// Add.tsx
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -7,6 +6,7 @@ import {
   FlatList,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -31,46 +31,63 @@ export default function AddTaskScreen() {
   const [loggedUserId, setLoggedUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('Fetching users...');
     fetchUsers();
     (async () => {
       const userJson = await AsyncStorage.getItem('user');
       const user = userJson ? JSON.parse(userJson) : null;
       setLoggedUserId(user?.id || null);
+      console.log('Logged in user ID:', user?.id);
     })();
   }, []);
 
   useEffect(() => {
+    console.log('Updating filteredUsers with search:', search, 'and users:', users); // Log for debugging
     const lower = search.toLowerCase();
-    setFilteredUsers(
-      users.filter(
-        u =>
-          u.name.toLowerCase().includes(lower) &&
-          !assignees.includes(u.id)
-      )
+    const newFilteredUsers = users.filter(
+      u =>
+        u.name.toLowerCase().includes(lower) &&
+        !assignees.includes(u._id) // Changed from u.id to u._id
     );
+    console.log('Filtered users:', newFilteredUsers); // Log filtered results
+    setFilteredUsers(newFilteredUsers);
   }, [search, users, assignees]);
 
   const toggleAssignee = (id: string) => {
-    setAssignees(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-    setSearch('');
+    console.log('Toggling assignee:', id); // Log the ID being toggled
+    if (id) { // Only proceed if ID is valid
+      setAssignees(prev =>
+        prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      );
+    } else {
+      console.warn('Invalid assignee ID:', id);
+    }
+    setSearch(''); // Clear search input after selection
   };
 
   const handleAdd = async () => {
     if (!title.trim()) {
       return Alert.alert('Error', 'Title is required.');
     }
+    console.log('Assignees before validation:', assignees); // Log assignees state
+    if (!assignees.length) {
+      return Alert.alert('Error', 'At least one assignee is required.');
+    }
     const dueDateStr = selectedDate.toISOString();
-    await addTask(title, description, priority, dueDateStr, assignees);
-    Alert.alert('Success', 'Task created!');
-    router.replace('/(tabs)/Task');
+    console.log('Attempting to add task with:', { title, description, priority, dueDateStr, assignees, loggedUserId });
+    try {
+      await addTask(title, description, priority, dueDateStr, assignees, loggedUserId);
+      console.log('Task creation succeeded');
+      Alert.alert('Success', 'Task created!');
+      router.replace('/(tabs)/Task');
+    } catch (error) {
+      console.error('Task creation failed:', error);
+      Alert.alert('Error', 'Failed to create task. Check console for details.');
+    }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>Add Task</Text>
-
+    <ScrollView style={styles.container}>
       <TextInput
         placeholder="Task Title"
         style={styles.input}
@@ -138,15 +155,22 @@ export default function AddTaskScreen() {
       {filteredUsers.length > 0 && (
         <FlatList
           data={filteredUsers}
-          keyExtractor={u => u.id}
+          keyExtractor={u => u._id || Math.random().toString()} // Changed from u.id to u._id
           style={styles.suggestions}
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.suggestionItem}
-              onPress={() => toggleAssignee(item.id)}
+              onPress={() => {
+                console.log('Selecting user:', item); // Log the entire item
+                if (item._id) { // Changed from item.id to item._id
+                  toggleAssignee(item._id);
+                } else {
+                  console.warn('User item has no valid id:', item);
+                }
+              }}
             >
               <Text>
-                {item.name} {item.id === loggedUserId ? '(you)' : ''}
+                {item.name} {item._id === loggedUserId ? '(you)' : ''} {/* Changed from item.id */}
               </Text>
             </TouchableOpacity>
           )}
@@ -156,7 +180,7 @@ export default function AddTaskScreen() {
       {assignees.length > 0 && (
         <View style={styles.chipsContainer}>
           {assignees.map(id => {
-            const user = users.find(u => u.id === id);
+            const user = users.find(u => u._id === id); // Changed from u.id to u._id
             return (
               <View key={id} style={styles.chip}>
                 <Text>
@@ -174,13 +198,12 @@ export default function AddTaskScreen() {
       <Pressable style={styles.button} onPress={handleAdd}>
         <Text style={styles.buttonText}>Add Task</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: '#fff' },
-  header: { fontSize: 24, fontWeight: '600', marginBottom: 16 },
   input: {
     borderWidth: 1,
     borderColor: '#ccc',

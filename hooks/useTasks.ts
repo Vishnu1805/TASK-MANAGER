@@ -15,7 +15,7 @@ export interface Task {
 }
 
 export interface User {
-  id: string;
+  _id: string; // Changed from id to _id to match backend
   name: string;
 }
 
@@ -29,8 +29,10 @@ export function useTasks() {
 
   // Load tasks and users on component mount
   useEffect(() => {
+    console.log('Initializing useTasks hook...');
     (async () => {
       const token = await AsyncStorage.getItem('token');
+      console.log('Token retrieved:', token ? 'Present' : 'Absent');
       if (token) {
         await Promise.all([fetchTasks(), fetchUsers()]);
       } else {
@@ -41,6 +43,7 @@ export function useTasks() {
   }, []);
 
   const fetchTasks = useCallback(async () => {
+    console.log('Fetching tasks...');
     const token = await AsyncStorage.getItem('token');
     if (!token) {
       console.warn('❌ Cannot fetch tasks — missing token.');
@@ -51,6 +54,7 @@ export function useTasks() {
       const { data } = await axios.get<Task[]>(API_URL, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log('Tasks fetched:', data);
       setTasks(data);
     } catch (error) {
       console.error('❌ Failed to fetch tasks:', error);
@@ -58,6 +62,7 @@ export function useTasks() {
   }, []);
 
   const fetchUsers = useCallback(async () => {
+    console.log('Fetching users...');
     const token = await AsyncStorage.getItem('token');
     if (!token) {
       console.warn('❌ Cannot fetch users — missing token.');
@@ -68,6 +73,7 @@ export function useTasks() {
       const { data } = await axios.get<User[]>(USERS_URL, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log('Users fetched:', data);
       setUsers(data);
     } catch (error) {
       console.error('❌ Failed to fetch users:', error);
@@ -80,22 +86,40 @@ export function useTasks() {
       description: string,
       priority: Task['priority'],
       dueDate: string,
-      assignees: string[]
+      assignees: string[],
+      userId: string | null
     ) => {
+      console.log('Adding task with payload:', { title, description, priority, dueDate, assignees, userId });
       const token = await AsyncStorage.getItem('token');
-      const userJson = await AsyncStorage.getItem('user');
-      const user = userJson ? JSON.parse(userJson) : null;
-
-      if (!token || !user?.id) {
+      if (!token || !userId) {
         console.warn('⚠️ Missing token or user ID');
         console.log('token:', token);
-        console.log('user:', user);
-        return;
+        console.log('userId:', userId);
+        throw new Error('Missing authentication or user ID');
       }
 
-      // Filter out invalid assignees and default to creator if none are valid
-      const validAssignees = assignees.filter(id => id != null && id !== '');
-      const finalAssignees = validAssignees.length > 0 ? validAssignees : [user.id];
+      // Ensure users are loaded before validation
+      if (users.length === 0) {
+        console.warn('⚠️ Users array is empty, fetching users...');
+        await fetchUsers();
+        if (users.length === 0) {
+          throw new Error('No users available to assign');
+        }
+      }
+
+      console.log('Current users array:', users);
+      // Filter out invalid assignees, explicitly rejecting null or undefined
+      const validAssignees = assignees.filter(id => {
+        const isValid = id !== null && id !== undefined && users.some(u => u._id === id); // Changed to u._id
+        console.log(`Validating assignee ${id}: ${isValid ? 'Valid' : 'Invalid'}`);
+        return isValid;
+      });
+      console.log('Validated assignees:', validAssignees);
+
+      if (!validAssignees.length) {
+        console.warn('⚠️ No valid assignees provided');
+        throw new Error('No valid assignees provided');
+      }
 
       const payload = {
         title,
@@ -103,24 +127,24 @@ export function useTasks() {
         status: 'pending',
         priority,
         dueDate,
-        assignees: finalAssignees,
-        userId: user.id,
+        assignees: validAssignees,
+        userId,
       };
 
       try {
-        console.log('📤 Creating task with payload:', payload);
-
-        await axios.post(API_URL, payload, {
+        console.log('Sending POST request to:', API_URL, 'with payload:', payload);
+        const response = await axios.post(API_URL, payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
-
+        console.log('Task creation response:', response.data);
         await fetchTasks(); // refresh task list
         console.log('✅ Task created and tasks list refreshed');
-      } catch (error) {
-        console.error('❌ Failed to add task:', error);
+      } catch (error: any) {
+        console.error('❌ Failed to add task:', error.response?.data || error.message);
+        throw error;
       }
     },
-    [fetchTasks]
+    [fetchTasks, users]
   );
 
   const toggleTask = useCallback(
