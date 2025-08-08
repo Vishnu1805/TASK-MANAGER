@@ -3,39 +3,30 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      nodejs: 18  # or 20 if supported by CodeBuild
+      nodejs: 18
     commands:
-      - echo Installing Node dependencies...
+      - echo "Installing Expo CLI and dependencies..."
       - npm install -g expo-cli
       - npm install
 
   pre_build:
     commands:
-      - echo Logging in to AWS...
-      # Add any AWS CLI setup here if needed (e.g., S3, ECR)
-      - echo Starting build process...
+      - echo "Setting environment variables for Expo static web build..."
+      - export EXPO_USE_STATIC_WEBPACK_CONFIG=1
 
   build:
     commands:
-      # Choose one of the following based on your target:
-      
-      # For Web:
-      - echo Building Expo Web App...
-      - npx expo export:web
-
-      # For Android (comment out if not needed):
-      # - echo Building Android App...
-      # - npx expo build:android --non-interactive
-
-      # For iOS (comment out if not needed):
-      # - echo Building iOS App...
-      # - npx expo build:ios --non-interactive
+      - echo "Starting Expo web export..."
+      - npx expo export --platform web --output-dir web-build
 
   post_build:
     commands:
-      - echo Build completed on `date`
+      - echo "Expo web app export complete."
+      # Uncomment this if you want to deploy to S3
+      # - echo "Deploying to S3..."
+      # - aws s3 sync web-build/ s3://your-s3-bucket-name/ --delete
 
 artifacts:
+  base-directory: web-build
   files:
     - '**/*'
-  base-directory: web-build  # or 'dist' if using a different build output folder (adjust accordingly)
