@@ -5,26 +5,23 @@ phases:
     runtime-versions:
       nodejs: 18
     commands:
-      - echo "Installing Expo CLI and dependencies..."
+      - echo "Installing dependencies..."
       - npm install -g expo-cli
       - npm install
 
   pre_build:
     commands:
-      - echo "Setting environment variables for Expo static web build..."
+      - echo "Setting Expo static bundler..."
       - export EXPO_USE_STATIC_WEBPACK_CONFIG=1
 
   build:
     commands:
-      - echo "Starting Expo web export..."
+      - echo "Exporting static web build..."
       - npx expo export --platform web --output-dir web-build
 
   post_build:
     commands:
-      - echo "Expo web app export complete."
-      # Uncomment this if you want to deploy to S3
-      # - echo "Deploying to S3..."
-      # - aws s3 sync web-build/ s3://your-s3-bucket-name/ --delete
+      - echo "Expo web export complete."
 
 artifacts:
   base-directory: web-build
