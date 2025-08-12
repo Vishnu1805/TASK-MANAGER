@@ -1,7 +1,9 @@
 // Task.tsx
+import { useTasks } from '@/hooks/useTasks';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Animated,
   FlatList,
@@ -13,10 +15,9 @@ import {
   View,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
-import { useTasks } from '../../hooks/useTasks';
 
 export default function TaskListScreen() {
-  const { tasks, toggleTask, deleteTask, fetchTasks } = useTasks();
+  const { tasks, users, toggleTask, deleteTask, fetchTasks, loadingTasks } = useTasks();
   const router = useRouter();
   const [loggedUserId, setLoggedUserId] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -24,19 +25,48 @@ export default function TaskListScreen() {
   const [snackbar, setSnackbar] = useState<string>('');
   const snackAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    (async () => {
-      await fetchTasks();
-      const userJson = await AsyncStorage.getItem('user');
-      const user = userJson ? JSON.parse(userJson) : null;
-      setLoggedUserId(user?.id || null);
-    })();
-  }, []);
-
-  // Only show tasks where you are an assignee
-  const userTasks = tasks.filter(t =>
-    loggedUserId ? t.assignees.includes(loggedUserId) : false
+  // Re-read logged user and fetch tasks whenever screen focused
+  useFocusEffect(
+    React.useCallback(() => {
+      let mounted = true;
+      (async () => {
+        try {
+          const userJson = await AsyncStorage.getItem('user');
+          const user = userJson ? JSON.parse(userJson) : null;
+          const id = user?._id ?? null;
+          if (mounted) setLoggedUserId(id);
+          await fetchTasks();
+          console.log('Refetched tasks and re-read user on focus. loggedUserId:', id);
+        } catch (e) {
+          console.warn('Failed to read user or fetch tasks on focus', e);
+        }
+      })();
+      return () => {
+        mounted = false;
+      };
+    }, [fetchTasks])
   );
+
+  const usersMap = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    users.forEach(u => {
+      map[u._id] = u.name;
+    });
+    return map;
+  }, [users]);
+
+  const userTasks = React.useMemo(() => {
+    if (!loggedUserId) return [];
+    const matches: typeof tasks = [];
+    tasks.forEach(t => {
+      const assigneeIds = Array.isArray(t.assignees)
+        ? t.assignees.map(a => (typeof a === 'string' ? a : (a as { _id?: string; id?: string })?._id ?? (a as { _id?: string; id?: string })?.id ?? String(a)))
+        : [];
+      if (assigneeIds.includes(loggedUserId)) matches.push(t);
+    });
+    console.log('Task filter - loggedUserId:', loggedUserId, 'matches:', matches.length);
+    return matches;
+  }, [tasks, loggedUserId]);
 
   const showSnackbar = (message: string) => {
     setSnackbar(message);
@@ -74,10 +104,12 @@ export default function TaskListScreen() {
 
   const handleToggle = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
-    await toggleTask(id, newStatus);
+    await toggleTask(id, newStatus as 'pending' | 'completed');
+    // refresh after toggle to ensure UI is up-to-date
+    await fetchTasks();
   };
 
-  const renderRightActions = (progress: Animated.AnimatedInterpolation<string | number>, dragX: Animated.AnimatedInterpolation<string | number>, id: string) => {
+  const renderRightActions = (progress: any, dragX: any, id: string) => {
     const scale = dragX.interpolate({
       inputRange: [-100, 0],
       outputRange: [1, 0],
@@ -97,46 +129,42 @@ export default function TaskListScreen() {
       <FlatList
         data={userTasks}
         keyExtractor={item => item._id}
-        renderItem={({ item }) => (
-          <Swipeable renderRightActions={(p, d) => renderRightActions(p, d, item._id)}>
-            <View style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.title, item.status === 'completed' && styles.done]}>
-                  {item.title}
-                </Text>
-                <Text style={styles.meta}>Priority: {item.priority}</Text>
-                <Text style={styles.meta}>
-                  Due: {item.dueDate ? new Date(item.dueDate).toDateString() : '—'}
-                </Text>
-                <Text style={styles.meta}>
-                  Assignees: {item.assignees.join(', ')}
-                </Text>
-              </View>
-              <View style={styles.buttons}>
-                <Pressable onPress={() => handleToggle(item._id, item.status)} style={styles.btn}>
-                  <Text style={styles.btnText}>
-                    {item.status === 'completed' ? 'Undo' : 'Done'}
+        renderItem={({ item }) => {
+          const assigneeNames = item.assignees.map(a => usersMap[a] ?? a).join(', ');
+          return (
+            <Swipeable renderRightActions={(p, d) => renderRightActions(p, d, item._id)}>
+              <View style={styles.row}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.title, item.status === 'completed' && styles.done]}>
+                    {item.title}
                   </Text>
-                </Pressable>
-                <Pressable onPress={() => router.push(`/Edit?id=${item._id}`)} style={styles.btn}>
-                  <Text style={styles.btnText}>Edit</Text>
-                </Pressable>
+                  <Text style={styles.meta}>Priority: {item.priority}</Text>
+                  <Text style={styles.meta}>
+                    Due: {item.dueDate ? new Date(item.dueDate).toDateString() : '—'}
+                  </Text>
+                  <Text style={styles.meta}>Assignees: {assigneeNames}</Text>
+                </View>
+                <View style={styles.buttons}>
+                  <Pressable onPress={() => handleToggle(item._id, item.status || 'pending')} style={styles.btn}>
+                    <Text style={styles.btnText}>
+                      {item.status === 'completed' ? 'Undo' : 'Done'}
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={() => router.push(`/Edit?id=${item._id}`)} style={styles.btn}>
+                    <Text style={styles.btnText}>Edit</Text>
+                  </Pressable>
+                </View>
               </View>
-            </View>
-          </Swipeable>
-        )}
-        ListEmptyComponent={<Text style={styles.empty}>No tasks assigned to you</Text>}
+            </Swipeable>
+          );
+        }}
+        ListEmptyComponent={<Text style={styles.empty}>{loadingTasks ? 'Loading tasks...' : 'No tasks assigned to you'}</Text>}
       />
 
-      {/* Floating Add Task Button */}
-      <Pressable
-        style={styles.fab}
-        onPress={() => router.push('/(tabs)/Add')}
-      >
+      <Pressable style={styles.fab} onPress={() => router.push('/(tabs)/Add')}>
         <Text style={styles.fabText}>＋</Text>
       </Pressable>
 
-      {/* Delete Confirmation Modal */}
       <Modal transparent visible={modalVisible} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -153,7 +181,6 @@ export default function TaskListScreen() {
         </View>
       </Modal>
 
-      {/* Snackbar */}
       {snackbar ? (
         <Animated.View style={[styles.snackbar, { opacity: snackAnim }]}>
           <Text style={styles.snackbarText}>{snackbar}</Text>
@@ -174,18 +201,7 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontSize: 12, fontWeight: '500' },
   deleteAction: { backgroundColor: '#f44336', justifyContent: 'center', alignItems: 'flex-end', padding: 20 },
   deleteText: { color: '#fff', fontWeight: '600', fontSize: 16 },
-  fab: {
-    position: 'absolute',
-    right: 24,
-    bottom: 24,
-    backgroundColor: '#4CAF50',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-  },
+  fab: { position: 'absolute', right: 24, bottom: 24, backgroundColor: '#4CAF50', width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', elevation: 4 },
   fabText: { color: '#fff', fontSize: 32, lineHeight: 34 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '80%', backgroundColor: '#fff', padding: 24, borderRadius: 8 },

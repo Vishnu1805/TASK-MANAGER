@@ -1,3 +1,5 @@
+// Edit.tsx
+import { useTasks } from '@/hooks/useTasks';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -9,31 +11,33 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useTasks } from '../../hooks/useTasks';
 
 export default function EditTaskScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { tasks, updateTask } = useTasks();
 
+  // Find task by canonical _id
   const task = tasks.find((t) => t._id === id);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<'pending' | 'completed'>('pending');
-  const [dueDate, setDueDate] = useState('');
+  const [dueDate, setDueDate] = useState(''); // ISO date string slice 'YYYY-MM-DD' for input
 
   useEffect(() => {
     if (task) {
-      setTitle(task.title);
+      setTitle(task.title ?? '');
       setDescription(task.description ?? '');
-      setStatus(task.status);
+      setStatus(task.status ?? 'pending');
       setDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '');
       console.log('📋 Loaded task for editing:', task);
     } else if (tasks.length > 0) {
+      // If tasks loaded but task not found, go back to Task list
       console.warn('❌ Task not found with ID:', id);
       router.replace('/Task');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task, tasks]);
 
   const handleUpdate = async () => {
@@ -44,24 +48,41 @@ export default function EditTaskScreen() {
       return;
     }
 
-    const updates = {
-      title,
-      description,
+    // Prepare updates object. Convert dueDate to ISO or null
+    const updates: any = {
+      title: title.trim(),
+      description: description?.trim() ?? '',
       status,
-      dueDate,
     };
+
+    if (dueDate) {
+      // Convert YYYY-MM-DD (input) to ISO string (server-friendly)
+      try {
+        const iso = new Date(dueDate).toISOString();
+        updates.dueDate = iso;
+      } catch (err) {
+        console.warn('Invalid dueDate, skipping conversion:', dueDate);
+      }
+    } else {
+      updates.dueDate = null;
+    }
 
     console.log('🔄 Updating task:', task._id, updates);
 
-    await updateTask(task._id, updates);
-    Alert.alert('✅ Success', 'Task updated!');
-    router.replace('/Task'); // ✅ Back to task list
+    try {
+      await updateTask(task._id, updates);
+      Alert.alert('✅ Success', 'Task updated!');
+      router.replace('/Task'); // Back to task list
+    } catch (err) {
+      console.error('❌ Failed to update task:', err);
+      Alert.alert('Error', 'Failed to update task. Check console for details.');
+    }
   };
 
   if (!task) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Loading Task...</Text>
+        <Text style={styles.title}>Loading Task.</Text>
       </View>
     );
   }
@@ -104,9 +125,9 @@ export default function EditTaskScreen() {
       {Platform.OS === 'web' ? (
         <input
           type="date"
-          style={styles.webInput}
+          style={styles.webInput as any}
           value={dueDate}
-          onChange={(e) => setDueDate(e.target.value)}
+          onChange={(e: any) => setDueDate(e.target.value)}
         />
       ) : (
         <TextInput

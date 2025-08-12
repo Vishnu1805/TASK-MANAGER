@@ -1,4 +1,5 @@
 //Index.tsx
+import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -10,7 +11,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useAuth } from '../../hooks/useAuth';
 
 export default function LoginScreen() {
   const [isRegister, setIsRegister] = useState(false);

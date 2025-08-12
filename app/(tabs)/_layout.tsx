@@ -1,8 +1,8 @@
 // app/tabs/_layout.tsx
+import { useAuth } from '@/hooks/useAuth';
 import { Stack } from 'expo-router';
 import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useAuth } from '../../hooks/useAuth';
 
 export default function TabsLayout() {
   const { currentUser } = useAuth();
