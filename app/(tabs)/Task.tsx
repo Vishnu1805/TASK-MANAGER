@@ -1,6 +1,5 @@
-// Task.tsx
+import { useAuth } from '@/hooks/useAuth';
 import { useTasks } from '@/hooks/useTasks';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
@@ -18,55 +17,50 @@ import { Swipeable } from 'react-native-gesture-handler';
 
 export default function TaskListScreen() {
   const { tasks, users, toggleTask, deleteTask, fetchTasks, loadingTasks } = useTasks();
+  const { currentUser } = useAuth();
   const router = useRouter();
-  const [loggedUserId, setLoggedUserId] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [toDeleteId, setToDeleteId] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState<string>('');
   const snackAnim = useRef(new Animated.Value(0)).current;
 
-  // Re-read logged user and fetch tasks whenever screen focused
   useFocusEffect(
     React.useCallback(() => {
-      let mounted = true;
       (async () => {
         try {
-          const userJson = await AsyncStorage.getItem('user');
-          const user = userJson ? JSON.parse(userJson) : null;
-          const id = user?._id ?? null;
-          if (mounted) setLoggedUserId(id);
           await fetchTasks();
-          console.log('Refetched tasks and re-read user on focus. loggedUserId:', id);
+          console.log('Tasks fetched for user:', currentUser?._id || 'none');
         } catch (e) {
-          console.warn('Failed to read user or fetch tasks on focus', e);
+          console.warn('Fetch tasks failed:', e);
         }
       })();
-      return () => {
-        mounted = false;
-      };
-    }, [fetchTasks])
+    }, [fetchTasks, currentUser])
   );
 
   const usersMap = React.useMemo(() => {
     const map: Record<string, string> = {};
     users.forEach(u => {
-      map[u._id] = u.name;
+      map[u._id] = u.name ?? 'Unknown';
     });
     return map;
   }, [users]);
 
   const userTasks = React.useMemo(() => {
-    if (!loggedUserId) return [];
-    const matches: typeof tasks = [];
-    tasks.forEach(t => {
+    if (!currentUser?._id) {
+      console.log('No user ID, showing no tasks');
+      return [];
+    }
+    const matches = tasks.filter(t => {
       const assigneeIds = Array.isArray(t.assignees)
-        ? t.assignees.map(a => (typeof a === 'string' ? a : (a as { _id?: string; id?: string })?._id ?? (a as { _id?: string; id?: string })?.id ?? String(a)))
+        ? t.assignees.map(a => typeof a === 'string' ? a : (a as any)?._id ?? String(a))
         : [];
-      if (assigneeIds.includes(loggedUserId)) matches.push(t);
+      const isAssigned = assigneeIds.includes(currentUser._id);
+      console.log(`Task ${t._id}: assignees=${JSON.stringify(assigneeIds)}, isAssigned=${isAssigned}`);
+      return isAssigned;
     });
-    console.log('Task filter - loggedUserId:', loggedUserId, 'matches:', matches.length);
+    console.log('Filtered tasks:', matches.length, 'for user:', currentUser._id);
     return matches;
-  }, [tasks, loggedUserId]);
+  }, [tasks, currentUser]);
 
   const showSnackbar = (message: string) => {
     setSnackbar(message);
@@ -96,17 +90,22 @@ export default function TaskListScreen() {
       await deleteTask(toDeleteId);
       await fetchTasks();
       showSnackbar('Task deleted');
-    } catch {
+    } catch (e) {
+      console.warn('Delete task failed:', e);
       showSnackbar('Failed to delete');
     }
     setModalVisible(false);
   };
 
   const handleToggle = async (id: string, currentStatus: string) => {
-    const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
-    await toggleTask(id, newStatus as 'pending' | 'completed');
-    // refresh after toggle to ensure UI is up-to-date
-    await fetchTasks();
+    try {
+      const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
+      await toggleTask(id, newStatus as 'pending' | 'completed');
+      await fetchTasks();
+    } catch (e) {
+      console.warn('Toggle task failed:', e);
+      showSnackbar('Failed to update status');
+    }
   };
 
   const renderRightActions = (progress: any, dragX: any, id: string) => {
@@ -130,7 +129,9 @@ export default function TaskListScreen() {
         data={userTasks}
         keyExtractor={item => item._id}
         renderItem={({ item }) => {
-          const assigneeNames = item.assignees.map(a => usersMap[a] ?? a).join(', ');
+          const assigneeNames = item.assignees
+            .map(a => `${usersMap[a] ?? a}${a === currentUser?._id ? ' (you)' : ''}`)
+            .join(', ');
           return (
             <Swipeable renderRightActions={(p, d) => renderRightActions(p, d, item._id)}>
               <View style={styles.row}>
@@ -138,19 +139,25 @@ export default function TaskListScreen() {
                   <Text style={[styles.title, item.status === 'completed' && styles.done]}>
                     {item.title}
                   </Text>
-                  <Text style={styles.meta}>Priority: {item.priority}</Text>
+                  <Text style={styles.meta}>Priority: {item.priority || 'Unknown'}</Text>
                   <Text style={styles.meta}>
                     Due: {item.dueDate ? new Date(item.dueDate).toDateString() : '—'}
                   </Text>
-                  <Text style={styles.meta}>Assignees: {assigneeNames}</Text>
+                  <Text style={styles.meta}>Assignees: {assigneeNames || 'None'}</Text>
                 </View>
                 <View style={styles.buttons}>
-                  <Pressable onPress={() => handleToggle(item._id, item.status || 'pending')} style={styles.btn}>
+                  <Pressable
+                    onPress={() => handleToggle(item._id, item.status || 'pending')}
+                    style={[styles.btn, styles.doneBtn]}
+                  >
                     <Text style={styles.btnText}>
                       {item.status === 'completed' ? 'Undo' : 'Done'}
                     </Text>
                   </Pressable>
-                  <Pressable onPress={() => router.push(`/Edit?id=${item._id}`)} style={styles.btn}>
+                  <Pressable
+                    onPress={() => router.push(`/Edit?id=${item._id}`)}
+                    style={[styles.btn, styles.editBtn]}
+                  >
                     <Text style={styles.btnText}>Edit</Text>
                   </Pressable>
                 </View>
@@ -158,13 +165,15 @@ export default function TaskListScreen() {
             </Swipeable>
           );
         }}
-        ListEmptyComponent={<Text style={styles.empty}>{loadingTasks ? 'Loading tasks...' : 'No tasks assigned to you'}</Text>}
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            {loadingTasks ? 'Loading tasks...' : 'No tasks assigned to you'}
+          </Text>
+        }
       />
-
       <Pressable style={styles.fab} onPress={() => router.push('/(tabs)/Add')}>
         <Text style={styles.fabText}>＋</Text>
       </Pressable>
-
       <Modal transparent visible={modalVisible} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -174,13 +183,12 @@ export default function TaskListScreen() {
                 <Text>Cancel</Text>
               </Pressable>
               <Pressable onPress={handleDelete} style={styles.modalBtnDelete}>
-                <Text style={{ color: '#fff' }}>Delete</Text>
+                <Text style={styles.modalBtnText}>Delete</Text>
               </Pressable>
             </View>
           </View>
         </View>
       </Modal>
-
       {snackbar ? (
         <Animated.View style={[styles.snackbar, { opacity: snackAnim }]}>
           <Text style={styles.snackbarText}>{snackbar}</Text>
@@ -191,25 +199,101 @@ export default function TaskListScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  row: { flexDirection: 'row', padding: 16, borderBottomWidth: 1, borderColor: '#eee' },
-  title: { fontSize: 16, fontWeight: '600' },
-  done: { textDecorationLine: 'line-through', color: '#999' },
-  meta: { fontSize: 12, color: '#555', marginTop: 4 },
-  buttons: { flexDirection: 'row', gap: 8, marginLeft: 8 },
-  btn: { backgroundColor: '#4CAF50', padding: 6, borderRadius: 4 },
-  btnText: { color: '#fff', fontSize: 12, fontWeight: '500' },
-  deleteAction: { backgroundColor: '#f44336', justifyContent: 'center', alignItems: 'flex-end', padding: 20 },
+  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  row: {
+    flexDirection: 'row',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginHorizontal: 8,
+    marginVertical: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  title: { fontSize: 16, fontWeight: '600', color: '#333' },
+  done: { textDecorationLine: 'line-through', color: '#888' },
+  meta: { fontSize: 12, color: '#666', marginTop: 4 },
+  buttons: { flexDirection: 'row', gap: 12, marginLeft: 12, alignItems: 'center' },
+  btn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+    elevation: 3,
+  },
+  doneBtn: { backgroundColor: '#28a745', borderColor: '#218838', borderWidth: 1 },
+  editBtn: { backgroundColor: '#007bff', borderColor: '#0056b3', borderWidth: 1 },
+  btnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  deleteAction: {
+    backgroundColor: '#dc3545',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    padding: 20,
+    borderRadius: 8,
+  },
   deleteText: { color: '#fff', fontWeight: '600', fontSize: 16 },
-  fab: { position: 'absolute', right: 24, bottom: 24, backgroundColor: '#4CAF50', width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', elevation: 4 },
+  fab: {
+    position: 'absolute',
+    right: 24,
+    bottom: 24,
+    backgroundColor: '#28a745',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
   fabText: { color: '#fff', fontSize: 32, lineHeight: 34 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '80%', backgroundColor: '#fff', padding: 24, borderRadius: 8 },
-  modalText: { fontSize: 18, marginBottom: 16, textAlign: 'center' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '80%',
+    backgroundColor: '#fff',
+    padding: 24,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  modalText: { fontSize: 18, fontWeight: '600', marginBottom: 16, textAlign: 'center', color: '#333' },
   modalButtons: { flexDirection: 'row', justifyContent: 'space-between' },
-  modalBtnCancel: { padding: 12 },
-  modalBtnDelete: { backgroundColor: '#f44336', padding: 12, borderRadius: 4 },
-  snackbar: { position: 'absolute', left: 20, right: 20, bottom: 40, backgroundColor: '#333', padding: 12, borderRadius: 8 },
-  snackbarText: { color: '#fff', textAlign: 'center' },
-  empty: { textAlign: 'center', marginTop: 20 },
+  modalBtnCancel: { padding: 12, borderRadius: 6, borderColor: '#ccc', borderWidth: 1 },
+  modalBtnDelete: { backgroundColor: '#dc3545', padding: 12, borderRadius: 6 },
+  modalBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  snackbar: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 40,
+    backgroundColor: '#333',
+    padding: 12,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+  snackbarText: { color: '#fff', textAlign: 'center', fontSize: 14 },
+  empty: { textAlign: 'center', marginTop: 20, fontSize: 16, color: '#666' },
 });
