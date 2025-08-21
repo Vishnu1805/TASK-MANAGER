@@ -1,3 +1,4 @@
+// app/(tabs)/Add.tsx
 import { useAuth } from '@/hooks/useAuth';
 import { User, useTasks } from '@/hooks/useTasks';
 import { useFocusEffect } from '@react-navigation/native';
@@ -71,8 +72,9 @@ export default function AddTaskScreen() {
     const dueDateStr = selectedDate ? selectedDate.toISOString() : null;
 
     try {
-      console.log('Adding task:', { title, assignees, userId: currentUser?._id });
-      await addTask(title, description, priority, dueDateStr, assignees);
+      console.log('Adding task - Input:', { title, assignees, userId: currentUser?._id });
+      const response = await addTask(title, description, priority, dueDateStr, assignees); // Capture response
+      console.log('Task created - Response:', response); // Log the created task
       router.back();
     } catch (e: any) {
       console.warn('Task creation failed:', e.message);

@@ -1,3 +1,4 @@
+// app/(tabs)/Task.tsx
 import { useAuth } from '@/hooks/useAuth';
 import { useTasks } from '@/hooks/useTasks';
 import { useFocusEffect } from '@react-navigation/native';
@@ -16,7 +17,7 @@ import {
 import { Swipeable } from 'react-native-gesture-handler';
 
 export default function TaskListScreen() {
-  const { tasks, users, toggleTask, deleteTask, fetchTasks, loadingTasks } = useTasks();
+  const { tasks, users, deleteTask, fetchTasks, loadingTasks, updateTask } = useTasks();
   const { currentUser } = useAuth();
   const router = useRouter();
   const [modalVisible, setModalVisible] = useState(false);
@@ -39,8 +40,11 @@ export default function TaskListScreen() {
 
   const usersMap = React.useMemo(() => {
     const map: Record<string, string> = {};
-    users.forEach(u => {
-      map[u._id] = u.name ?? 'Unknown';
+    (users || []).forEach(u => {
+      const id = (u as any)._id ?? (u as any).id ?? '';
+      if (id) {
+        map[id] = (u as any).name ?? 'Unknown';
+      }
     });
     return map;
   }, [users]);
@@ -50,12 +54,12 @@ export default function TaskListScreen() {
       console.log('No user ID, showing no tasks');
       return [];
     }
-    const matches = tasks.filter(t => {
+    const matches = (tasks || []).filter(t => {
       const assigneeIds = Array.isArray(t.assignees)
-        ? t.assignees.map(a => typeof a === 'string' ? a : (a as any)?._id ?? String(a))
+        ? t.assignees.map(a => (typeof a === 'string' ? a : (a as any)?._id ?? String(a))).filter(id => id)
         : [];
       const isAssigned = assigneeIds.includes(currentUser._id);
-      console.log(`Task ${t._id}: assignees=${JSON.stringify(assigneeIds)}, isAssigned=${isAssigned}`);
+      console.log(`Task ${t._id}: assignees=${JSON.stringify(assigneeIds)}, currentUser=${currentUser._id}, isAssigned=${isAssigned}`);
       return isAssigned;
     });
     console.log('Filtered tasks:', matches.length, 'for user:', currentUser._id);
@@ -99,9 +103,17 @@ export default function TaskListScreen() {
 
   const handleToggle = async (id: string, currentStatus: string) => {
     try {
-      const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
-      await toggleTask(id, newStatus as 'pending' | 'completed');
+      console.log('Toggling task:', { id, currentStatus });
+
+      const validStatuses = ['pending', 'completed'] as const;
+      const safeCurrentStatus = validStatuses.includes(currentStatus as any) ? currentStatus : 'pending';
+      const newStatus = safeCurrentStatus === 'completed' ? 'pending' : 'completed';
+
+      console.log('New status to set:', newStatus);
+
+      await updateTask(id, { status: newStatus });
       await fetchTasks();
+      showSnackbar(`Task marked as ${newStatus}`);
     } catch (e) {
       console.warn('Toggle task failed:', e);
       showSnackbar('Failed to update status');
@@ -116,21 +128,35 @@ export default function TaskListScreen() {
     });
     return (
       <Pressable onPress={() => confirmDelete(id)} style={styles.deleteAction}>
-        <Animated.Text style={[styles.deleteText, { transform: [{ scale }] }]}>
-          🗑️ Delete
-        </Animated.Text>
+        <Animated.Text style={[styles.deleteText, { transform: [{ scale }] }]}>🗑️ Delete</Animated.Text>
       </Pressable>
     );
   };
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 12 }}>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: '#222' }}>Tasks</Text>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <Pressable onPress={() => router.push('/(tabs)/Kanban')}>
+            <Text style={{ color: '#222' }}>Kanban</Text>
+          </Pressable>
+          <Pressable onPress={() => router.push('/(tabs)/Analytics')}>
+            <Text style={{ color: '#222' }}>Analytics</Text>
+          </Pressable>
+        </View>
+      </View>
+
       <FlatList
         data={userTasks}
-        keyExtractor={item => item._id}
+        keyExtractor={item => String(item._id ?? item.id ?? Math.random())}
         renderItem={({ item }) => {
-          const assigneeNames = item.assignees
-            .map(a => `${usersMap[a] ?? a}${a === currentUser?._id ? ' (you)' : ''}`)
+          const assigneeNames = (item.assignees || [])
+            .map(a => {
+              const id = typeof a === 'string' ? a : (a as any)?._id ?? String(a);
+              return usersMap[id] || id;
+            })
+            .filter(Boolean)
             .join(', ');
           return (
             <Swipeable renderRightActions={(p, d) => renderRightActions(p, d, item._id)}>
@@ -150,9 +176,7 @@ export default function TaskListScreen() {
                     onPress={() => handleToggle(item._id, item.status || 'pending')}
                     style={[styles.btn, styles.doneBtn]}
                   >
-                    <Text style={styles.btnText}>
-                      {item.status === 'completed' ? 'Undo' : 'Done'}
-                    </Text>
+                    <Text style={styles.btnText}>{item.status === 'completed' ? 'Undo' : 'Done'}</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => router.push(`/Edit?id=${item._id}`)}
@@ -166,14 +190,14 @@ export default function TaskListScreen() {
           );
         }}
         ListEmptyComponent={
-          <Text style={styles.empty}>
-            {loadingTasks ? 'Loading tasks...' : 'No tasks assigned to you'}
-          </Text>
+          <Text style={styles.empty}>{loadingTasks ? 'Loading tasks...' : 'No tasks assigned to you'}</Text>
         }
       />
+
       <Pressable style={styles.fab} onPress={() => router.push('/(tabs)/Add')}>
         <Text style={styles.fabText}>＋</Text>
       </Pressable>
+
       <Modal transparent visible={modalVisible} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -189,6 +213,7 @@ export default function TaskListScreen() {
           </View>
         </View>
       </Modal>
+
       {snackbar ? (
         <Animated.View style={[styles.snackbar, { opacity: snackAnim }]}>
           <Text style={styles.snackbarText}>{snackbar}</Text>
