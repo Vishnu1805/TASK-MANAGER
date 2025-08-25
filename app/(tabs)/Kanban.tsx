@@ -1,4 +1,5 @@
 // app/(tabs)/Kanban.tsx
+import { useAuth } from '@/hooks/useAuth';
 import { useTasks } from '@/hooks/useTasks';
 import { useTheme } from '@/providers/ThemeProvider';
 import { useRouter } from 'expo-router';
@@ -20,7 +21,7 @@ const COLUMN_TITLES: Record<string, string> = {
   completed: 'Done',
 };
 
-function cloneColumnsFromTasks(tasks: any[]) {
+function cloneColumnsFromTasks(tasks: any[] = []) {
   const cols: Record<string, any[]> = { pending: [], 'in-progress': [], completed: [] };
   (tasks || []).forEach((t: any) => {
     const s = t.status ?? 'pending';
@@ -31,20 +32,35 @@ function cloneColumnsFromTasks(tasks: any[]) {
 }
 
 export default function KanbanScreen() {
-  const { tasks, updateTask } = useTasks();
+  const { tasks, updateTask, fetchTasks } = useTasks();
+  const { currentUser } = useAuth();
   const router = useRouter();
   const { theme } = useTheme();
-  const [localCols, setLocalCols] = useState<Record<string, any[]>>(() => cloneColumnsFromTasks(tasks || []));
+
+  // Filter tasks to only those assigned to current user
+  const userTasks = useMemo(() => {
+    if (!currentUser?._id) return [];
+    return (tasks || []).filter((t: any) => {
+      const assigneeIds = Array.isArray(t.assignees)
+        ? t.assignees
+            .map((a: any) => (typeof a === 'string' ? a : (a?._id ?? String(a))))
+            .filter((id: any) => id)
+        : [];
+      return assigneeIds.includes(currentUser._id);
+    });
+  }, [tasks, currentUser]);
+
+  const [localCols, setLocalCols] = useState<Record<string, any[]>>(() => cloneColumnsFromTasks(userTasks || []));
 
   useEffect(() => {
-    setLocalCols(cloneColumnsFromTasks(tasks || []));
-  }, [tasks]);
+    setLocalCols(cloneColumnsFromTasks(userTasks || []));
+  }, [userTasks]);
 
   const onDragEndWeb = async (result: any) => {
     if (!result.destination) return;
     const { source, destination, draggableId } = result;
     const sourceCol = source.droppableId;
-    const destCol = destination.droppableId;
+    const destCol = destination.droppableId as 'pending' | 'in-progress' | 'completed';
     const sourceIndex = source.index;
     const destIndex = destination.index;
 
@@ -55,6 +71,7 @@ export default function KanbanScreen() {
     };
 
     try {
+      // optimistic UI update
       if (sourceCol === destCol) {
         const [moved] = next[sourceCol].splice(sourceIndex, 1);
         next[sourceCol].splice(destIndex, 0, moved);
@@ -65,27 +82,37 @@ export default function KanbanScreen() {
       }
 
       setLocalCols(next);
+
+      // backend update
       await updateTask(draggableId, { status: destCol });
+
+      // fetch fresh tasks from server so Task screen also refreshes
+      await fetchTasks?.();
+
+      // optional: navigate back if completed
       if (destCol === 'completed') router.push('/(tabs)/Task');
-    } catch (e) {
+    } catch (e: any) {
       console.warn('Drag update failed, reverting UI:', e);
-      setLocalCols(cloneColumnsFromTasks(tasks || []));
+      // fetch to restore canonical server state
+      await fetchTasks?.();
+      setLocalCols(cloneColumnsFromTasks(userTasks || []));
     }
   };
 
-  const moveTaskNative = async (taskId: string, destCol: string) => {
+  const moveTaskNative = async (taskId: string, destCol: 'pending' | 'in-progress' | 'completed') => {
     try {
+      // optimistic change locally
       setLocalCols(prev => {
         const next: Record<'pending' | 'in-progress' | 'completed', any[]> = {
           pending: [...(prev.pending || [])],
           'in-progress': [...(prev['in-progress'] || [])],
           completed: [...(prev.completed || [])],
         };
-        for (const col of COLUMN_ORDER) {
-          const idx = next[col as 'completed' | 'pending' | 'in-progress'].findIndex(t => String(t._id ?? t.id) === String(taskId));
+        for (const col of COLUMN_ORDER as Array<'pending' | 'in-progress' | 'completed'>) {
+          const idx = next[col].findIndex(t => String(t._id ?? t.id) === String(taskId));
           if (idx >= 0) {
-            const [moved] = next[col as 'pending' | 'in-progress' | 'completed'].splice(idx, 1);
-            next[destCol as 'pending' | 'in-progress' | 'completed'].push({ ...(moved || {}), status: destCol });
+            const [moved] = next[col].splice(idx, 1);
+            next[destCol].push({ ...(moved || {}), status: destCol });
             break;
           }
         }
@@ -93,10 +120,15 @@ export default function KanbanScreen() {
       });
 
       await updateTask(taskId, { status: destCol });
+
+      // fetch fresh tasks so Task screen reflects changes
+      await fetchTasks?.();
+
       if (destCol === 'completed') router.push('/(tabs)/Task');
     } catch (e) {
       console.warn('Native move failed', e);
-      setLocalCols(cloneColumnsFromTasks(tasks || []));
+      await fetchTasks?.();
+      setLocalCols(cloneColumnsFromTasks(userTasks || []));
     }
   };
 
@@ -145,7 +177,7 @@ export default function KanbanScreen() {
     );
   }
 
-  const cols = useMemo(() => cloneColumnsFromTasks(tasks || []), [tasks]);
+  const cols = useMemo(() => cloneColumnsFromTasks(userTasks || []), [userTasks]);
   return (
     <ScrollView style={[styles.page, { backgroundColor: pageBg }]}>
       <View style={{ flexDirection: 'row', gap: 8, padding: 12 }}>
@@ -159,7 +191,7 @@ export default function KanbanScreen() {
                 onLongPress={() => {
                   const currentIndex = COLUMN_ORDER.indexOf(colId);
                   const next = COLUMN_ORDER[(currentIndex + 1) % COLUMN_ORDER.length];
-                  moveTaskNative(String(task._id ?? task.id), next);
+                  moveTaskNative(String(task._id ?? task.id), next as 'pending' | 'in-progress' | 'completed');
                 }}
                 style={[styles.card, { backgroundColor: cardBg }]}
               >

@@ -8,7 +8,7 @@ const TASKS_URL = Task_API_URL;
 const USERS_URL = User_API_URL;
 
 type Priority = 'urgent' | 'medium' | 'low';
-type Status = 'pending' | 'completed';
+type Status = 'pending' | 'completed' | 'in-progress';
 
 export type User = {
   _id: string;
@@ -29,7 +29,7 @@ export type Task = {
   priority?: Priority;
   dueDate?: string | null;
   assignees: string[];
-  status?: Status;
+  status?: string;
 };
 
 type TasksContextShape = {
