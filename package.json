@@ -44,10 +44,12 @@
     "react-native-svg": "^15.11.2",
     "react-native-web": "~0.20.0",
     "react-native-webview": "13.13.5",
-    "recharts": "^3.1.2"
+    "recharts": "^3.1.2",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.0.10",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~9.2.0",

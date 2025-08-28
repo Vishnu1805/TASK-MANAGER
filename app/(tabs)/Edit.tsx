@@ -29,7 +29,7 @@ export default function EditTaskScreen() {
     if (task) {
       setTitle(task.title ?? '');
       setDescription(task.description ?? '');
-      setStatus(task.status ?? 'pending');
+      setStatus(task.status === 'pending' || task.status === 'completed' ? task.status : 'pending');
       setDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '');
       console.log('📋 Loaded task for editing:', task);
     } else if (tasks.length > 0) {
