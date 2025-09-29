@@ -1,5 +1,3 @@
-
-
 // app/(tabs)/Task.tsx
 import { useAuth } from '@/hooks/useAuth';
 import { useTasks } from '@/hooks/useTasks';
@@ -40,6 +38,8 @@ export default function TaskListScreen() {
     }, [fetchTasks, currentUser])
   );
 
+  // 🔹 Simplified: Use resolved names from tasks (backend populates assignees/user.name)
+  // usersMap is fallback-only now (if backend resolution fails)
   const usersMap = React.useMemo(() => {
     const map: Record<string, string> = {};
     (users || []).forEach(u => {
@@ -51,18 +51,32 @@ export default function TaskListScreen() {
     return map;
   }, [users]);
 
+  // 🔹 FIXED: Filter for owner OR assignee (matches backend query)
   const userTasks = React.useMemo(() => {
     if (!currentUser?._id) {
       console.log('No user ID, showing no tasks');
       return [];
     }
     const matches = (tasks || []).filter(t => {
+      // Check if owner (userId or task.user.id)
+      const isOwner = String(t.userId) === currentUser._id || String(t.user?.id) === currentUser._id;
+      
+      // Check assignees (handle string IDs or { id, name } objects from normalization)
       const assigneeIds = Array.isArray(t.assignees)
-        ? t.assignees.map(a => (typeof a === 'string' ? a : (a as any)?._id ?? String(a))).filter(id => id)
+        ? t.assignees
+            .map(a => {
+              if (typeof a === 'string') return a;
+              if (a && typeof a === 'object') return a.id || a._id || String(a);
+              return null;
+            })
+            .filter(id => id && id !== 'undefined' && id !== 'null')
         : [];
       const isAssigned = assigneeIds.includes(currentUser._id);
-      console.log(`Task ${t._id}: assignees=${JSON.stringify(assigneeIds)}, currentUser=${currentUser._id}, isAssigned=${isAssigned}`);
-      return isAssigned;
+
+      const isMatch = isOwner || isAssigned;
+      console.log(`Task ${t._id}: isOwner=${isOwner}, assigneeIds=${JSON.stringify(assigneeIds)}, isAssigned=${isAssigned}, match=${isMatch}`);
+      
+      return isMatch;
     });
     console.log('Filtered tasks:', matches.length, 'for user:', currentUser._id);
     return matches;
@@ -143,80 +157,62 @@ export default function TaskListScreen() {
       extrapolate: 'clamp',
     });
     return (
-      <Pressable onPress={() => confirmDelete(id)} style={styles.deleteAction}>
-        <Animated.Text style={[styles.deleteText, { transform: [{ scale }] }]}>🗑️ Delete</Animated.Text>
-      </Pressable>
+      <Animated.View style={[styles.deleteAction, { transform: [{ scale }] }]}>
+        <Pressable onPress={() => confirmDelete(id)}>
+          <Text style={styles.deleteText}>Delete</Text>
+        </Pressable>
+      </Animated.View>
+    );
+  };
+
+  const renderItem = ({ item }: { item: any }) => {
+    // 🔹 Use resolved names from backend (fallback to usersMap)
+    const assigneeNames = (item.assignees || [])
+      .map((a: any) => {
+        if (typeof a === 'object' && a.name) return a.name; // Backend resolved { id, name }
+        return usersMap[a.id || a] || 'Unknown'; // Fallback
+      })
+      .join(', ');
+    const dueDate = item.dueDate ? new Date(item.dueDate) : null;
+    const dueText = dueDate ? `Due: ${dueDate.toLocaleDateString()}` : null;
+
+    return (
+      <Swipeable renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item._id)}>
+        <View style={styles.row}>
+          <Pressable onPress={() => router.push({ pathname: '/(tabs)/Details', params: { id: item._id } })} style={{ flex: 1 }}>
+            <Text style={[styles.title, item.status === 'completed' ? styles.done : null]}>{item.title}</Text>
+            {dueText ? <Text style={styles.meta}>{dueText}</Text> : null}
+            <Text style={styles.meta}>Assignees: {assigneeNames}</Text>
+            <Text style={styles.meta}>Priority: {item.priority || 'Unknown'}</Text>
+          </Pressable>
+          <View style={styles.buttons}>
+            <Pressable onPress={() => handleToggle(item._id, item.status)} style={[styles.btn, styles.doneBtn]}>
+              <Text style={styles.btnText}>{item.status === 'completed' ? 'Undo' : 'Done'}</Text>
+            </Pressable>
+            {item.status !== 'in-progress' && (
+              <Pressable onPress={() => handleSetInProgress(item._id)} style={[styles.btn, styles.inProgressBtn]}>
+                <Text style={styles.btnText}>In Progress</Text>
+              </Pressable>
+            )}
+            <Pressable onPress={() => router.push({ pathname: '/Edit', params: { id: item._id } })} style={[styles.btn, styles.editBtn]}>
+              <Text style={styles.btnText}>Edit</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Swipeable>
     );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 12 }}>
-        <Text style={{ fontSize: 18, fontWeight: '700', color: '#222' }}>Tasks</Text>
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          <Pressable onPress={() => router.push('/(tabs)/Kanban')}>
-            <Text style={{ color: '#222' }}>Kanban</Text>
-          </Pressable>
-          <Pressable onPress={() => router.push('/(tabs)/Analytics')}>
-            <Text style={{ color: '#222' }}>Analytics</Text>
-          </Pressable>
-        </View>
-      </View>
-
       <FlatList
         data={userTasks}
-        keyExtractor={item => String(item._id ?? item.id ?? Math.random())}
-        renderItem={({ item }) => {
-          const assigneeNames = (item.assignees || [])
-            .map(a => {
-              const id = typeof a === 'string' ? a : (a as any)?._id ?? String(a);
-              return usersMap[id] || id;
-            })
-            .filter(Boolean)
-            .join(', ');
-          return (
-            <Swipeable renderRightActions={(p, d) => renderRightActions(p, d, item._id)}>
-              <View style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.title, item.status === 'completed' && styles.done]}>
-                    {item.title}
-                  </Text>
-                  <Text style={styles.meta}>Priority: {item.priority || 'Unknown'}</Text>
-                  <Text style={styles.meta}>
-                    Due: {item.dueDate ? new Date(item.dueDate).toDateString() : '—'}
-                  </Text>
-                  <Text style={styles.meta}>Assignees: {assigneeNames || 'None'}</Text>
-                </View>
-                <View style={styles.buttons}>
-                  {/* In Progress button: only show when not already in-progress */}
-                  {item.status !== 'in-progress' && (
-                    <Pressable
-                      onPress={() => handleSetInProgress(item._id)}
-                      style={[styles.btn, styles.inProgressBtn]}
-                    >
-                      <Text style={styles.btnText}>In Progress</Text>
-                    </Pressable>
-                  )}
-
-                  <Pressable
-                    onPress={() => handleToggle(item._id, item.status || 'pending')}
-                    style={[styles.btn, styles.doneBtn]}
-                  >
-                    <Text style={styles.btnText}>{item.status === 'completed' ? 'Undo' : 'Done'}</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => router.push(`/Edit?id=${item._id}`)}
-                    style={[styles.btn, styles.editBtn]}
-                  >
-                    <Text style={styles.btnText}>Edit</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </Swipeable>
-          );
-        }}
+        keyExtractor={item => item._id}
+        renderItem={renderItem}
         ListEmptyComponent={
-          <Text style={styles.empty}>{loadingTasks ? 'Loading tasks...' : 'No tasks assigned to you'}</Text>
+          <Text style={styles.empty}>
+            {loadingTasks ? 'Loading tasks...' : 'No tasks assigned to you'}
+          </Text>
         }
         refreshing={loadingTasks}
         onRefresh={fetchTasks}
@@ -226,6 +222,7 @@ export default function TaskListScreen() {
         <Text style={styles.fabText}>＋</Text>
       </Pressable>
 
+      {/* Delete confirmation modal */}
       <Modal transparent visible={modalVisible} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -286,7 +283,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   doneBtn: { backgroundColor: '#28a745', borderColor: '#218838', borderWidth: 1 },
-  // new In Progress style
   inProgressBtn: { backgroundColor: '#ff9800', borderColor: '#ef6c00', borderWidth: 1 },
   editBtn: { backgroundColor: '#007bff', borderColor: '#0056b3', borderWidth: 1 },
   btnText: { color: '#fff', fontSize: 14, fontWeight: '600' },

@@ -1,4 +1,4 @@
-//Index.tsx
+// index.tsx
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
@@ -10,9 +10,12 @@ import {
   Text,
   TextInput,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
-export default function LoginScreen() {
+export default function AuthScreen() {
   const [isRegister, setIsRegister] = useState(false);
   const [identifier, setIdentifier] = useState(''); // Email for login
   const [name, setName] = useState(''); // For register
@@ -23,9 +26,9 @@ export default function LoginScreen() {
   const router = useRouter();
 
   // Basic email validation
-  const validateEmail = (email: string) => {
+  const validateEmail = (em: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+    return emailRegex.test(em);
   };
 
   const handleSubmit = async () => {
@@ -49,7 +52,7 @@ export default function LoginScreen() {
         }
       } catch (error: any) {
         console.error('Registration error:', error);
-        Alert.alert('Error', error.message || 'An unexpected error occurred.');
+        Alert.alert('Error', error?.message || 'An unexpected error occurred.');
       } finally {
         setLoading(false);
       }
@@ -65,7 +68,7 @@ export default function LoginScreen() {
       }
       setLoading(true);
       try {
-        console.log('Login attempt with:', { email: identifier, password });
+        console.log('Login attempt with:', { email: identifier });
         const success = await login(identifier, password);
         if (success) {
           console.log('Login successful');
@@ -75,10 +78,10 @@ export default function LoginScreen() {
         }
       } catch (error: any) {
         console.error('Login error:', error);
-        if (error.response?.status === 401) {
+        if (error?.response?.status === 401) {
           Alert.alert('Login Failed', 'Unauthorized: Check your email and password.');
         } else {
-          Alert.alert('Error', error.message || 'An unexpected error occurred.');
+          Alert.alert('Error', error?.message || 'An unexpected error occurred.');
         }
       } finally {
         setLoading(false);
@@ -87,97 +90,213 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>{isRegister ? 'Register' : 'Login'}</Text>
-      {!isRegister ? (
-        <>
-          <TextInput
-            placeholder="Email"
-            autoCapitalize="none"
-            value={identifier}
-            onChangeText={setIdentifier}
-            style={styles.input}
-          />
-          <TextInput
-            placeholder="Password"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            style={styles.input}
-          />
-        </>
-      ) : (
-        <>
-          <TextInput
-            placeholder="Name"
-            autoCapitalize="none"
-            value={name}
-            onChangeText={setName}
-            style={styles.input}
-          />
-          <TextInput
-            placeholder="Email"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-            style={styles.input}
-          />
-          <TextInput
-            placeholder="Password"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            style={styles.input}
-          />
-        </>
-      )}
-      <Pressable onPress={handleSubmit} style={styles.button} disabled={loading}>
-        {loading ? (
-          <ActivityIndicator />
-        ) : (
-          <Text style={styles.buttonText}>{isRegister ? 'Register' : 'Login'}</Text>
-        )}
-      </Pressable>
-      <Pressable onPress={() => setIsRegister(!isRegister)}>
-        <Text style={styles.switchText}>
-          {isRegister ? 'Switch to Login' : 'Switch to Register'}
-        </Text>
-      </Pressable>
-    </View>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.select({ ios: 'padding', android: undefined })}
+    >
+      <LinearGradient
+        colors={['#F7EFFF', '#F5D7FF', '#EDE7FF']}
+        start={[0, 0]}
+        end={[1, 1]}
+        style={styles.background}
+      >
+        {/* Top small header for the center welcome (like the middle screen in your image) */}
+        <View style={styles.topContainer}>
+          <Text style={styles.welcomeTitle}>Welcome {isRegister ? '🙂' : '=)'}</Text>
+          <Text style={styles.welcomeSubtitle}>
+            {isRegister
+              ? 'Create an account to get started'
+              : 'Nice to see you again — login to continue'}
+          </Text>
+        </View>
+
+        {/* Card */}
+        <View style={styles.cardWrapper}>
+          <View style={styles.card}>
+            <Text style={styles.cardHeader}>{isRegister ? 'Create Your Account' : 'Welcome Back'}</Text>
+
+            {isRegister ? (
+              <>
+                <TextInput
+                  placeholder="Full name"
+                  autoCapitalize="words"
+                  value={name}
+                  onChangeText={setName}
+                  style={styles.input}
+                  placeholderTextColor="#9b8da6"
+                />
+                <TextInput
+                  placeholder="Email"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  value={email}
+                  onChangeText={setEmail}
+                  style={styles.input}
+                  placeholderTextColor="#9b8da6"
+                />
+                <TextInput
+                  placeholder="Password"
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                  style={styles.input}
+                  placeholderTextColor="#9b8da6"
+                />
+              </>
+            ) : (
+              <>
+                <TextInput
+                  placeholder="Email"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  value={identifier}
+                  onChangeText={setIdentifier}
+                  style={styles.input}
+                  placeholderTextColor="#9b8da6"
+                />
+                <TextInput
+                  placeholder="Password"
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                  style={styles.input}
+                  placeholderTextColor="#9b8da6"
+                />
+              </>
+            )}
+
+            {/* Primary CTA (gradient) */}
+            <Pressable
+              onPress={handleSubmit}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && { opacity: 0.85 },
+                loading && { opacity: 0.8 },
+              ]}
+              disabled={loading}
+            >
+              <LinearGradient
+                colors={['#FFB8E6', '#C9A0FF']}
+                start={[0, 0]}
+                end={[1, 1]}
+                style={styles.primaryGradient}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>{isRegister ? 'Get Started' : 'Log In'}</Text>
+                )}
+              </LinearGradient>
+            </Pressable>
+
+            {/* Secondary link / small text */}
+            <Pressable
+              onPress={() => setIsRegister(!isRegister)}
+              style={{ marginTop: 14 }}
+            >
+              <Text style={styles.switchText}>
+                {isRegister ? 'Already have an account? Log In' : "Don't have an account? Create one"}
+              </Text>
+            </Pressable>
+
+            {/* Removed social login buttons here as requested */}
+          </View>
+        </View>
+      </LinearGradient>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  background: {
     flex: 1,
-    padding: 24,
-    justifyContent: 'center',
-    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 32,
   },
-  header: {
-    fontSize: 28,
-    fontWeight: '600',
-    marginBottom: 32,
-    textAlign: 'center',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: '#2196F3',
-    padding: 14,
-    borderRadius: 8,
+  topContainer: {
     alignItems: 'center',
+    marginBottom: 12,
   },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '500' },
-  switchText: {
-    marginTop: 16,
+  welcomeTitle: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#2a2132',
+  },
+  welcomeSubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    color: '#6f5f74',
     textAlign: 'center',
-    color: '#2196F3',
+    maxWidth: 300,
+  },
+
+  cardWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+
+  card: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 28,
+    paddingVertical: 28,
+    paddingHorizontal: 22,
+    // soft inner gradient look can be achieved by border + subtle shadow:
+    borderWidth: 1,
+    borderColor: 'rgba(200,180,220,0.35)',
+    // shadow
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.06,
+        shadowRadius: 20,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+
+  cardHeader: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#2a2132',
+    marginBottom: 16,
+    textAlign: 'left',
+  },
+
+  input: {
+    backgroundColor: '#faf7fe',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(150,130,165,0.15)',
+    color: '#2a2132',
+  },
+
+  primaryButton: {
+    marginTop: 4,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  primaryGradient: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderRadius: 14,
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  switchText: {
+    color: '#7b5f86',
+    textAlign: 'center',
+    fontWeight: '600',
   },
 });
