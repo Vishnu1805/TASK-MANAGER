@@ -38,8 +38,6 @@ export default function TaskListScreen() {
     }, [fetchTasks, currentUser])
   );
 
-  // 🔹 Simplified: Use resolved names from tasks (backend populates assignees/user.name)
-  // usersMap is fallback-only now (if backend resolution fails)
   const usersMap = React.useMemo(() => {
     const map: Record<string, string> = {};
     (users || []).forEach(u => {
@@ -51,17 +49,12 @@ export default function TaskListScreen() {
     return map;
   }, [users]);
 
-  // 🔹 FIXED: Filter for owner OR assignee (matches backend query)
   const userTasks = React.useMemo(() => {
     if (!currentUser?._id) {
       console.log('No user ID, showing no tasks');
       return [];
     }
     const matches = (tasks || []).filter(t => {
-      // Check if owner (userId or task.user.id)
-      const isOwner = String(t.userId) === currentUser._id || String(t.user?.id) === currentUser._id;
-      
-      // Check assignees (handle string IDs or { id, name } objects from normalization)
       const assigneeIds = Array.isArray(t.assignees)
         ? t.assignees
             .map(a => {
@@ -72,11 +65,8 @@ export default function TaskListScreen() {
             .filter(id => id && id !== 'undefined' && id !== 'null')
         : [];
       const isAssigned = assigneeIds.includes(currentUser._id);
-
-      const isMatch = isOwner || isAssigned;
-      console.log(`Task ${t._id}: isOwner=${isOwner}, assigneeIds=${JSON.stringify(assigneeIds)}, isAssigned=${isAssigned}, match=${isMatch}`);
-      
-      return isMatch;
+      console.log(`Task ${t._id}: assigneeIds=${JSON.stringify(assigneeIds)}, isAssigned=${isAssigned}`);
+      return isAssigned;
     });
     console.log('Filtered tasks:', matches.length, 'for user:', currentUser._id);
     return matches;
@@ -108,7 +98,6 @@ export default function TaskListScreen() {
     if (!toDeleteId) return;
     try {
       await deleteTask(toDeleteId);
-      await fetchTasks();
       showSnackbar('Task deleted');
     } catch (e) {
       console.warn('Delete task failed:', e);
@@ -117,19 +106,14 @@ export default function TaskListScreen() {
     setModalVisible(false);
   };
 
-  // Existing Done toggle: pending <-> completed
   const handleToggle = async (id: string, currentStatus: string) => {
     try {
       console.log('Toggling task:', { id, currentStatus });
-
       const validStatuses = ['pending', 'completed'] as const;
       const safeCurrentStatus = validStatuses.includes(currentStatus as any) ? currentStatus : 'pending';
       const newStatus = safeCurrentStatus === 'completed' ? 'pending' : 'completed';
-
       console.log('New status to set:', newStatus);
-
       await updateTask(id, { status: newStatus });
-      await fetchTasks();
       showSnackbar(`Task marked as ${newStatus}`);
     } catch (e) {
       console.warn('Toggle task failed:', e);
@@ -137,12 +121,10 @@ export default function TaskListScreen() {
     }
   };
 
-  // NEW: set status to in-progress
   const handleSetInProgress = async (id: string) => {
     try {
       console.log('Setting task to in-progress:', id);
       await updateTask(id, { status: 'in-progress' });
-      await fetchTasks();
       showSnackbar('Task moved to in-progress');
     } catch (e) {
       console.warn('Set in-progress failed:', e);
@@ -166,11 +148,10 @@ export default function TaskListScreen() {
   };
 
   const renderItem = ({ item }: { item: any }) => {
-    // 🔹 Use resolved names from backend (fallback to usersMap)
     const assigneeNames = (item.assignees || [])
       .map((a: any) => {
-        if (typeof a === 'object' && a.name) return a.name; // Backend resolved { id, name }
-        return usersMap[a.id || a] || 'Unknown'; // Fallback
+        if (typeof a === 'object' && a.name) return a.name;
+        return usersMap[a.id || a] || 'Unknown';
       })
       .join(', ');
     const dueDate = item.dueDate ? new Date(item.dueDate) : null;
@@ -222,7 +203,6 @@ export default function TaskListScreen() {
         <Text style={styles.fabText}>＋</Text>
       </Pressable>
 
-      {/* Delete confirmation modal */}
       <Modal transparent visible={modalVisible} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>

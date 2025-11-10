@@ -1,4 +1,3 @@
-// app/(tabs)/Add.tsx
 import { useAuth } from '@/hooks/useAuth';
 import { User, useTasks } from '@/hooks/useTasks';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -61,16 +60,11 @@ export default function AddTaskScreen() {
     setSearch('');
   };
 
-  // Robust DocumentPicker result parsing + upload
   const handlePickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: true });
-      // Normalize result to an array of file objects
       let files: any[] = [];
-      // Newer Expo docpicker may return { canceled: false, output: [ ... ] } or { canceled: false, assets: [...] }
-      // Some versions return a single file { type: 'success', name, uri, size, mimeType }
       if (!result) return;
-      // handle legacy shapes
       if ((result as any).canceled === true) {
         return;
       }
@@ -79,12 +73,10 @@ export default function AddTaskScreen() {
       } else if (Array.isArray((result as any).assets)) {
         files = (result as any).assets;
       } else if ((result as any).uri && !(result as any).canceled) {
-        // single-file response
         files = [result];
       } else if (Array.isArray(result)) {
         files = result;
       } else {
-        // fallback: try to find assets/output fields
         const r = result as any;
         const maybe = r.output ?? r.assets ?? (r.files ? r.files : null);
         if (Array.isArray(maybe)) files = maybe;
@@ -97,7 +89,6 @@ export default function AddTaskScreen() {
 
       setUploading(true);
       for (const file of files) {
-        // normalize fields
         const name = file.name || file.filename || `file-${Date.now()}`;
         const type = file.mimeType || file.type || file.mime || 'application/octet-stream';
         const uri = file.uri || file.uriLocal || file.fileUri;
@@ -125,59 +116,57 @@ export default function AddTaskScreen() {
     }
   };
 
-  // Remove an attachment
   const removeAttachment = (objectName: string) => {
     setAttachments(prev => prev.filter(att => att.objectName !== objectName));
   };
 
-  // Upload file to MinIO using presigned URL
- const uploadFile = async (uri: string, name: string, type: string): Promise<{ objectName: string }> => {
-  const token = await AsyncStorage.getItem('token'); // 👈 add this
-  const serverUrl = 'http://192.168.1.3:3000/api/upload/sign?filename=' + encodeURIComponent(name);
+  const uploadFile = async (uri: string, name: string, type: string): Promise<{ objectName: string }> => {
+    const token = await AsyncStorage.getItem('token');
+    const serverUrl = 'http://192.168.1.3:3000/api/upload/sign?filename=' + encodeURIComponent(name);
 
-  const signRes = await fetch(serverUrl, {
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+    const signRes = await fetch(serverUrl, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
 
-  if (!signRes.ok) {
-    const errText = await signRes.text();
-    throw new Error(`Failed to get presigned URL: ${signRes.status} ${errText}`);
-  }
-
-  const { uploadUrl, objectName } = await signRes.json();
-
-  if (Platform.OS === 'web' && uri.startsWith('data:')) {
-    const base64Data = uri.split(',')[1];
-    const byteCharacters = atob(base64Data);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    if (!signRes.ok) {
+      const errText = await signRes.text();
+      throw new Error(`Failed to get presigned URL: ${signRes.status} ${errText}`);
     }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type });
 
-    const uploadRes = await fetch(uploadUrl, {
-      method: 'PUT',
-      body: blob,
-      headers: { 'Content-Type': type },
-    });
+    const { uploadUrl, objectName } = await signRes.json();
 
-    if (!uploadRes.ok) throw new Error('Upload failed');
-  } else {
-    const { default: FileSystem } = await import('expo-file-system');
-    const uploadRes = await FileSystem.uploadAsync(uploadUrl, uri, {
-      httpMethod: 'PUT',
-      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-      headers: { 'Content-Type': type },
-    });
+    if (Platform.OS === 'web' && uri.startsWith('data:')) {
+      const base64Data = uri.split(',')[1];
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type });
 
-    if (uploadRes.status !== 200) throw new Error('Upload failed');
-  }
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: blob,
+        headers: { 'Content-Type': type },
+      });
 
-  return { objectName };
-};
+      if (!uploadRes.ok) throw new Error('Upload failed');
+    } else {
+      const { default: FileSystem } = await import('expo-file-system');
+      const uploadRes = await FileSystem.uploadAsync(uploadUrl, uri, {
+        httpMethod: 'PUT',
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: { 'Content-Type': type },
+      });
+
+      if (uploadRes.status !== 200) throw new Error('Upload failed');
+    }
+
+    return { objectName };
+  };
 
   const handleAdd = async () => {
     if (!title.trim()) {
@@ -212,7 +201,6 @@ export default function AddTaskScreen() {
         onChangeText={setDescription}
         multiline
       />
-
       <Text style={styles.label}>Priority:</Text>
       <View style={styles.row}>
         {(['urgent', 'medium', 'low'] as const).map(level => (
@@ -227,7 +215,6 @@ export default function AddTaskScreen() {
           </Pressable>
         ))}
       </View>
-
       <Text style={styles.label}>Due Date:</Text>
       {Platform.OS === 'web' ? (
         <input
@@ -242,10 +229,8 @@ export default function AddTaskScreen() {
           <Pressable onPress={() => setShowPicker(true)}>
             <Text style={styles.input}>{selectedDate.toDateString()}</Text>
           </Pressable>
-          {/* keep your native date picker implementation */}
         </>
       )}
-
       <Text style={styles.label}>Assign to:</Text>
       <TextInput placeholder="Type name..." style={styles.input} value={search} onChangeText={setSearch} />
       {filteredUsers.length > 0 && (
@@ -279,12 +264,10 @@ export default function AddTaskScreen() {
           })}
         </View>
       )}
-
       <Text style={styles.label}>Attachments:</Text>
       <Pressable style={styles.uploadBtn} onPress={handlePickFile} disabled={uploading}>
         <Text style={styles.uploadText}>{uploading ? 'Uploading...' : '+ Upload File'}</Text>
       </Pressable>
-
       {attachments.length > 0 ? (
         <View style={styles.attachList}>
           {attachments.map((att, idx) => (
@@ -299,7 +282,6 @@ export default function AddTaskScreen() {
       ) : (
         <Text style={styles.noAttachments}>No files selected</Text>
       )}
-
       <Pressable style={styles.button} onPress={handleAdd}>
         <Text style={styles.buttonText}>Add Task</Text>
       </Pressable>

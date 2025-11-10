@@ -1,17 +1,18 @@
-// app/hooks/useTasks.ts
+// hooks/useTasks.ts
 import { Task_API_URL, User_API_URL } from '@/constants/Apikeys';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios, { AxiosError } from 'axios';
+import axios from 'axios';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { useAuth } from './useAuth';
 
 const TASKS_URL = Task_API_URL;
 const USERS_URL = User_API_URL;
-const UPLOAD_URL = `${TASKS_URL.replace('/tasks', '/upload')}`; // Derive from TASKS_URL, e.g., /api/upload
+const UPLOAD_URL = `${TASKS_URL.replace('/tasks', '/upload')}`;
 
-// --- types (refined to match backend exactly) ---
+// --- types ---
 type Priority = 'urgent' | 'medium' | 'low';
-type Status = 'pending' | 'in-progress' | 'completed'; // ✅ Matches backend enum
+type Status = 'pending' | 'in-progress' | 'completed';
 
 export type User = {
   _id: string;
@@ -22,28 +23,30 @@ export type User = {
 
 export type Attachment = {
   name: string;
-  objectName?: string; // MinIO object key
-  url?: string; // Presigned GET URL from backend
+  objectName?: string;
+  url?: string;
   size?: number;
   contentType?: string;
   [k: string]: any;
 };
 
 export type Assignee = {
-  _id: any; id: string; name: string 
-}; // ✅ Backend returns assignees as { id, name }
+  _id: any;
+  id: string;
+  name: string;
+};
 
 export type Task = {
-  updatedAt?: string; // ISO string from backend timestamps
+  updatedAt?: string;
   createdAt?: string;
   _id: string;
   title: string;
   description?: string;
   priority?: Priority;
-  dueDate?: string | null; // ISO string
-  assignees: Assignee[]; // ✅ Array of { id, name } from backend
+  dueDate?: string | null;
+  assignees: Assignee[];
   status?: Status;
-  user?: User; // Backend resolves owner as { id, name }
+  user?: User;
   attachments?: Attachment[];
   [k: string]: any;
 };
@@ -60,30 +63,41 @@ type TasksContextShape = {
     description: string,
     priority: Priority,
     dueDate: string | null,
-    assignees: string[], // IDs; backend resolves names
-    attachments?: Attachment[] // Optional; populate after upload
+    assignees: string[],
+    attachments?: Attachment[]
   ) => Promise<Task>;
   updateTask: (taskId: string, updates: Record<string, any>) => Promise<Task>;
   toggleTask: (taskId: string, newStatus: Status) => Promise<Task>;
   deleteTask: (taskId: string) => Promise<void>;
-  // 🔹 NEW: Upload attachment (presigned flow)
   uploadAttachment: (file: { uri: string; name: string; type: string; size: number }) => Promise<Attachment>;
 };
 
 const TasksContext = createContext<TasksContextShape | undefined>(undefined);
 
-// normalize helper (enhanced for backend assignee/user shape)
+const isUserRelevant = (task: Task, currentUserId: string | undefined): boolean => {
+  if (!currentUserId) return false;
+  const assigneeIds = Array.isArray(task.assignees)
+    ? task.assignees
+        .map((a: any) => {
+          if (typeof a === 'string') return a;
+          if (a && typeof a === 'object') return a.id || a._id || String(a);
+          return null;
+        })
+        .filter((id: string | null) => id && id !== 'undefined' && id !== 'null')
+    : [];
+  return assigneeIds.includes(currentUserId);
+};
+
 const normalizeTask = (t: any): Task => {
   if (!t) throw new Error('normalizeTask: task is falsy');
 
   const _id = t._id ?? t.id ?? String(t._id ?? t.id ?? '');
 
-  // ✅ Handle backend's { id, name } shape for assignees
   const assignees: Assignee[] = Array.isArray(t.assignees)
     ? t.assignees
         .map((a: any) => {
           if (!a) return null;
-          if (typeof a === 'string') return { id: a, name: a }; // Fallback
+          if (typeof a === 'string') return { id: a, name: a };
           if (a && typeof a === 'object') return { id: a._id ?? a.id ?? a, name: a.name ?? a };
           return null;
         })
@@ -92,7 +106,6 @@ const normalizeTask = (t: any): Task => {
 
   const attachments: Attachment[] = Array.isArray(t.attachments)
     ? t.attachments.map((a: any) => {
-        // support different shapes from backend
         const name = a.name ?? a.filename ?? a.originalname ?? a.key ?? '';
         const objectName = a.objectName ?? a.key ?? a.object_key ?? a.objectname ?? undefined;
         const url = a.url ?? a.getUrl ?? a.signedUrl ?? undefined;
@@ -109,7 +122,6 @@ const normalizeTask = (t: any): Task => {
     description: t.description ?? t.desc ?? '',
     assignees,
     attachments,
-    // ✅ Ensure dates are strings
     dueDate: t.dueDate ? new Date(t.dueDate).toISOString() : null,
     updatedAt: t.updatedAt ? new Date(t.updatedAt).toISOString() : undefined,
     createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : undefined,
@@ -128,9 +140,10 @@ const getAuthHeaders = async () => {
   }
 };
 
-// 🔹 NEW: Helper for presigned attachment upload
-const uploadAttachmentToMinIO = async (presignData: { uploadUrl: string; objectName: string }, file: { uri: string; name: string; type: string; size: number }) => {
-  // Step 1: PUT file to presigned URL
+const uploadAttachmentToMinIO = async (
+  presignData: { uploadUrl: string; objectName: string },
+  file: { uri: string; name: string; type: string; size: number }
+) => {
   const formData = new FormData();
   formData.append('file', {
     uri: file.uri,
@@ -142,7 +155,6 @@ const uploadAttachmentToMinIO = async (presignData: { uploadUrl: string; objectN
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 
-  // Step 2: Get signed download URL
   const { data: { url } } = await axios.get(`${UPLOAD_URL}/sign-get?objectName=${presignData.objectName}`, {
     headers: await getAuthHeaders(),
   });
@@ -156,29 +168,24 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
 
-  // Socket related
+  const { currentUser } = useAuth();
+
   const [socket, setSocket] = useState<Socket | null>(null);
-  // Polling fallback timer id
-  const [pollerId, setPollerId] = useState<number | null>(null);
 
-  // Derive a base URL for socket connection.
-  const SOCKET_BASE = (process.env.SOCKET_URL ?? TASKS_URL.replace(/\/api\/.*$/, ''));
+  const SOCKET_BASE = process.env.SOCKET_URL ?? TASKS_URL.replace(/\/api\/.*$/, '');
 
-  // --- fetchTasks / fetchUsers implementations ---
   const fetchTasks = useCallback(async () => {
     setLoadingTasks(true);
     try {
       const headers = await getAuthHeaders();
       const res = await axios.get(TASKS_URL, { headers });
-      const arr = Array.isArray(res.data) ? res.data : (res.data?.tasks ?? []);
+      const arr = Array.isArray(res.data) ? res.data : res.data?.tasks ?? [];
       const normalized = arr.map(normalizeTask);
       setTasks(normalized);
     } catch (e: any) {
       console.warn('Failed to fetch tasks:', e);
-      // 🔹 NEW: Handle auth errors (e.g., refresh token or logout)
       if (e.response?.status === 401) {
         await AsyncStorage.removeItem('token');
-        // Optionally: Trigger login flow
       }
     } finally {
       setLoadingTasks(false);
@@ -190,7 +197,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const headers = await getAuthHeaders();
       const res = await axios.get(USERS_URL, { headers });
-      const arr = Array.isArray(res.data) ? res.data : (res.data?.users ?? []);
+      const arr = Array.isArray(res.data) ? res.data : res.data?.users ?? [];
       setUsers(arr.map((u: any) => ({ _id: u._id ?? u.id, ...u })));
     } catch (e) {
       console.warn('Failed to fetch users:', e);
@@ -199,7 +206,6 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  // --- addTask: accepts optional attachments and keeps local state consistent ---
   const addTask = useCallback(
     async (
       title: string,
@@ -211,30 +217,24 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     ) => {
       try {
         const headers = await getAuthHeaders();
-        const body: any = { 
-          title, 
-          description, 
-          priority, 
-          assignees, 
-          attachments // ✅ Backend saves metadata; URLs added on fetch
+        const body: any = {
+          title,
+          description,
+          priority,
+          assignees,
+          attachments,
         };
-        if (dueDate) body.dueDate = new Date(dueDate).toISOString(); // ✅ Format as ISO
+        if (dueDate) body.dueDate = new Date(dueDate).toISOString();
         console.log('Sending addTask request with body:', body);
         const res = await axios.post(TASKS_URL, body, { headers });
         const created = normalizeTask(res.data);
         console.log('Task created response:', created);
 
-        // Insert into local state immediately, avoid duplicates
-        setTasks(prev => {
-          if (prev.some(t => t._id === created._id)) return prev;
-          return [created, ...prev];
-        });
-
-        // Reconcile (optional) to ensure server canonical state
-        try {
-          await fetchTasks();
-        } catch (e) {
-          // ignore fetch error but keep created in local state
+        if (isUserRelevant(created, currentUser?._id ?? undefined)) {
+          setTasks(prev => {
+            if (prev.some(t => t._id === created._id)) return prev;
+            return [created, ...prev];
+          });
         }
 
         return created;
@@ -243,10 +243,9 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         throw new Error(e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Failed to create task');
       }
     },
-    [fetchTasks]
+    [currentUser?._id]
   );
 
-  // --- updateTask implementation ---
   const updateTask = useCallback(
     async (taskId: string, updates: Record<string, any>) => {
       try {
@@ -255,28 +254,29 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (updates.assignees) {
           body.assignees = updates.assignees.filter((id: string) => id && id !== 'undefined' && id !== 'null');
         }
-        // ✅ Format dates if present
         if (updates.dueDate) body.dueDate = new Date(updates.dueDate).toISOString();
         console.log('Sending updateTask request for taskId:', taskId, 'with body:', body);
         const res = await axios.patch(`${TASKS_URL}/${taskId}`, body, { headers });
         const updated = normalizeTask(res.data);
         console.log('Task updated response:', updated);
-        setTasks(prev => prev.map(t => (t._id === taskId ? updated : t)));
-        try {
-          await fetchTasks();
-        } catch (e) {
-          // ignore
-        }
+
+        setTasks(prev => {
+          const newTasks = prev.filter(t => t._id !== taskId);
+          if (isUserRelevant(updated, currentUser?._id ?? undefined)) {
+            return [...newTasks, updated];
+          }
+          return newTasks;
+        });
+
         return updated;
       } catch (e: any) {
         console.warn('Failed to update task:', e?.message, e?.response?.data);
         throw new Error(e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Failed to update task');
       }
     },
-    [fetchTasks]
+    [currentUser?._id]
   );
 
-  // --- deleteTask implementation ---
   const deleteTask = useCallback(
     async (taskId: string) => {
       const headers = await getAuthHeaders();
@@ -291,17 +291,11 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     []
   );
 
-  // 🔹 NEW: Upload single attachment via presigned URL
   const uploadAttachment = useCallback(async (file: { uri: string; name: string; type: string; size: number }) => {
     try {
       const headers = await getAuthHeaders();
-
-      // Step 1: Get presigned PUT URL
       const { data: presignData } = await axios.get(`${UPLOAD_URL}/sign?filename=${encodeURIComponent(file.name)}`, { headers });
-
-      // Step 2: Upload to MinIO
       const attachment = await uploadAttachmentToMinIO(presignData, file);
-
       console.log('Attachment uploaded:', attachment);
       return attachment;
     } catch (e: any) {
@@ -313,24 +307,24 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // --- socket setup & handlers ---
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      try {
-        // get token before connecting so we can pass it in auth
-        const token = await AsyncStorage.getItem('token');
+    let socketInstance: Socket | null = null;
 
+    const setupSocket = async () => {
+      try {
+        const token = await AsyncStorage.getItem('token');
         const s = io(SOCKET_BASE, {
           transports: ['websocket'],
           auth: { token },
+          reconnection: true,
+          reconnectionAttempts: Infinity,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
         });
 
         s.on('connect', () => {
           console.log('Tasks socket connected, id:', s.id);
-          // stop poller if running
           if (mounted) {
-            if (pollerId) {
-              clearInterval(pollerId);
-              setPollerId(null);
-            }
+            fetchTasks().catch(e => console.warn('Fetch tasks on socket connect failed:', e));
           }
         });
 
@@ -338,8 +332,16 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           console.warn('Tasks socket connect_error:', err?.message || err);
         });
 
+        s.on('reconnect', (attempt: number) => {
+          console.log('Tasks socket reconnected after', attempt, 'attempts');
+          if (mounted) {
+            fetchTasks().catch(e => console.warn('Fetch tasks on reconnect failed:', e));
+          }
+        });
+
         s.on('task:created', (payload: any) => {
           const t = normalizeTask(payload);
+          if (!isUserRelevant(t, currentUser?._id ?? undefined)) return;
           setTasks(prev => {
             if (prev.some(p => p._id === t._id)) return prev;
             return [t, ...prev];
@@ -348,7 +350,13 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         s.on('task:updated', (payload: any) => {
           const t = normalizeTask(payload);
-          setTasks(prev => prev.map(p => (p._id === t._id ? t : p)));
+          setTasks(prev => {
+            const newTasks = prev.filter(p => p._id !== t._id);
+            if (isUserRelevant(t, currentUser?._id ?? undefined)) {
+              return [...newTasks, t];
+            }
+            return newTasks;
+          });
         });
 
         s.on('task:deleted', (payload: any) => {
@@ -357,52 +365,26 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setTasks(prev => prev.filter(p => p._id !== id));
         });
 
-        setSocket(s);
-
-        // cleanup on unmount
-        return () => {
-          try {
-            s.removeAllListeners();
-            s.disconnect();
-          } catch (e) {
-            /* ignore */
-          }
-        };
+        if (mounted) {
+          setSocket(s);
+          socketInstance = s;
+        }
       } catch (err) {
         console.warn('Failed to init task socket:', err);
       }
-    })();
-
-    return () => {
-      // set mounted false so we don't try to update state after unmount
-      mounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once
 
-  // --- Polling fallback: if socket doesn't connect, poll every N seconds ---
-  useEffect(() => {
-    // start poller only if socket is null and no poller is running
-    if (!socket && !pollerId) {
-      const id = setInterval(() => {
-        fetchTasks().catch(e => console.warn('Polling fetchTasks failed:', e));
-      }, 10000); // every 10s
-      setPollerId(Number(id));
-    }
-
-    // if socket becomes available, clear poller
-    if (socket && pollerId) {
-      clearInterval(pollerId);
-      setPollerId(null);
-    }
+    setupSocket();
 
     return () => {
-      if (pollerId) {
-        clearInterval(pollerId);
-        setPollerId(null);
+      mounted = false;
+      if (socketInstance) {
+        socketInstance.removeAllListeners();
+        socketInstance.disconnect();
+        console.log('Tasks socket disconnected on cleanup');
       }
     };
-  }, [socket, pollerId, fetchTasks]);
+  }, [currentUser?._id, fetchTasks]);
 
   // initial load
   useEffect(() => {
@@ -422,10 +404,8 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     toggleTask: async (taskId: string, newStatus: Status) => {
       return updateTask(taskId, { status: newStatus });
     },
-    deleteTask: async (taskId: string) => {
-      return deleteTask(taskId);
-    },
-    uploadAttachment, // 🔹 NEW: Exposed for components
+    deleteTask,
+    uploadAttachment,
   };
 
   return React.createElement(TasksContext.Provider, { value: ctx }, children);
@@ -433,6 +413,6 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 export function useTasks() {
   const ctx = useContext(TasksContext);
-     if (!ctx) throw new Error('useTasks must be used within a TasksProvider');
+  if (!ctx) throw new Error('useTasks must be used within a TasksProvider');
   return ctx;
 }

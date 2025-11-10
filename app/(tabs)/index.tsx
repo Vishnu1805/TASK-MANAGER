@@ -1,31 +1,29 @@
-// index.tsx
 import { useAuth } from '@/hooks/useAuth';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 
 export default function AuthScreen() {
   const [isRegister, setIsRegister] = useState(false);
-  const [identifier, setIdentifier] = useState(''); // Email for login
-  const [name, setName] = useState(''); // For register
-  const [email, setEmail] = useState(''); // For register
+  const [identifier, setIdentifier] = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { register, login } = useAuth();
   const router = useRouter();
 
-  // Basic email validation
   const validateEmail = (em: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(em);
@@ -33,7 +31,6 @@ export default function AuthScreen() {
 
   const handleSubmit = async () => {
     if (isRegister) {
-      // Registration flow
       if (!name.trim() || !email.trim() || !password.trim()) {
         Alert.alert('Error', 'Please fill out all fields.');
         return;
@@ -57,7 +54,6 @@ export default function AuthScreen() {
         setLoading(false);
       }
     } else {
-      // Login flow
       if (!identifier.trim() || !password.trim()) {
         Alert.alert('Error', 'Please fill out both fields.');
         return;
@@ -100,7 +96,6 @@ export default function AuthScreen() {
         end={[1, 1]}
         style={styles.background}
       >
-        {/* Top small header for the center welcome (like the middle screen in your image) */}
         <View style={styles.topContainer}>
           <Text style={styles.welcomeTitle}>Welcome {isRegister ? '🙂' : '=)'}</Text>
           <Text style={styles.welcomeSubtitle}>
@@ -110,7 +105,6 @@ export default function AuthScreen() {
           </Text>
         </View>
 
-        {/* Card */}
         <View style={styles.cardWrapper}>
           <View style={styles.card}>
             <Text style={styles.cardHeader}>{isRegister ? 'Create Your Account' : 'Welcome Back'}</Text>
@@ -165,7 +159,6 @@ export default function AuthScreen() {
               </>
             )}
 
-            {/* Primary CTA (gradient) */}
             <Pressable
               onPress={handleSubmit}
               style={({ pressed }) => [
@@ -189,7 +182,6 @@ export default function AuthScreen() {
               </LinearGradient>
             </Pressable>
 
-            {/* Secondary link / small text */}
             <Pressable
               onPress={() => setIsRegister(!isRegister)}
               style={{ marginTop: 14 }}
@@ -198,8 +190,6 @@ export default function AuthScreen() {
                 {isRegister ? 'Already have an account? Log In' : "Don't have an account? Create one"}
               </Text>
             </Pressable>
-
-            {/* Removed social login buttons here as requested */}
           </View>
         </View>
       </LinearGradient>
@@ -230,21 +220,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 300,
   },
-
   cardWrapper: {
     flex: 1,
     justifyContent: 'center',
   },
-
   card: {
     backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: 28,
     paddingVertical: 28,
     paddingHorizontal: 22,
-    // soft inner gradient look can be achieved by border + subtle shadow:
     borderWidth: 1,
     borderColor: 'rgba(200,180,220,0.35)',
-    // shadow
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -257,7 +243,6 @@ const styles = StyleSheet.create({
       },
     }),
   },
-
   cardHeader: {
     fontSize: 20,
     fontWeight: '700',
@@ -265,7 +250,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'left',
   },
-
   input: {
     backgroundColor: '#faf7fe',
     borderRadius: 14,
@@ -277,7 +261,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(150,130,165,0.15)',
     color: '#2a2132',
   },
-
   primaryButton: {
     marginTop: 4,
     borderRadius: 14,
@@ -293,7 +276,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-
   switchText: {
     color: '#7b5f86',
     textAlign: 'center',
