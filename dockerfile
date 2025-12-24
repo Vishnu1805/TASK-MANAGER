@@ -16,13 +16,13 @@ COPY . .
 ENV EXPO_USE_STATIC_WEBPACK_CONFIG=1
 
 # Export web build
-RUN npx expo export --platform web --output-dir web-build
+RUN npx expo export --platform web 
 
 # ---------- Stage 2: Serve with NGINX ----------
 FROM nginx:alpine
 
 # Copy build output from builder
-COPY --from=builder /app/web-build /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Optional: Improve performance with gzip & brotli
 # RUN apk add --no-cache nginx-mod-http-brotli nginx-mod-http-gzip-static
