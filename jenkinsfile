@@ -1,0 +1,190 @@
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS18'
+    }
+
+    environment {
+        EXPO_USE_STATIC_WEBPACK_CONFIG = "1"
+    }
+
+    stages {
+
+        stage('Clone Repository') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Vishnu1805/TASK-MANAGER.git'
+            }
+        }
+
+
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                npm ci
+                npm cache clean --force
+                '''
+            }
+        }
+
+        stage('Build Expo Web') {
+            steps {
+                sh '''
+                npx expo export -p web --output-dir web-build
+                '''
+            }
+        }
+
+        stage('Run Application') {
+            steps {
+                sh '''
+                npm install -g serve
+                serve -s web-build -l 3000 &
+                '''
+            }
+        }
+
+    }
+
+    post {
+        success {
+            echo "Application Build and Run Successful"
+        }
+        failure {
+            echo "Pipeline Failed"
+        }
+    }
+}
+
+
+
+
+// pipeline {
+//     agent any
+
+//     tools {
+//         nodejs 'NodeJS18'
+//     }
+
+//     environment {
+//         EXPO_USE_STATIC_WEBPACK_CONFIG = "1"
+//         npm_config_cache                = "${WORKSPACE}/.npm-cache"
+//         DEPLOY_PATH                     = "/var/www/task-manager"
+//         EC2_PUBLIC_IP                   = sh(script: 'curl -s http://169.254.169.254/latest/meta-data/public-ipv4', returnStdout: true).trim()
+//     }
+
+//     stages {
+
+//         // ─────────────────────────────────────────
+//         // STAGE 1: Clone
+//         // ─────────────────────────────────────────
+//         stage('Clone Repository') {
+//             steps {
+//                 echo "Cloning repository..."
+//                 git branch: 'main', url: 'https://github.com/Vishnu1805/TASK-MANAGER.git'
+//             }
+//         }
+
+//         // ─────────────────────────────────────────
+//         // STAGE 2: Install Dependencies
+//         // ─────────────────────────────────────────
+//         stage('Install Dependencies') {
+//             steps {
+//                 sh '''
+//                 echo "Node: $(node --version)"
+//                 echo "NPM:  $(npm --version)"
+//                 npm ci
+//                 '''
+//             }
+//         }
+
+//         // ─────────────────────────────────────────
+//         // STAGE 3: Build
+//         // ─────────────────────────────────────────
+//         stage('Build Expo Web') {
+//             steps {
+//                 sh '''
+//                 npx expo export -p web --output-dir web-build
+//                 echo "── Build Output ──"
+//                 ls -lah web-build/
+//                 '''
+//             }
+//         }
+
+//         // ─────────────────────────────────────────
+//         // STAGE 4: Archive Artifact
+//         // ─────────────────────────────────────────
+//         stage('Archive Build') {
+//             steps {
+//                 archiveArtifacts artifacts: 'web-build/**/*', fingerprint: true
+//             }
+//         }
+
+//         // ─────────────────────────────────────────
+//         // STAGE 5: Deploy to Nginx
+//         // ─────────────────────────────────────────
+//         stage('Deploy') {
+//             steps {
+//                 sh '''
+//                 # Create directory if missing
+//                 sudo mkdir -p ${DEPLOY_PATH}
+
+//                 # Sync build output — deletes old files cleanly
+//                 sudo rsync -avz --delete web-build/ ${DEPLOY_PATH}/
+
+//                 # Nginx needs read access
+//                 sudo chown -R www-data:www-data ${DEPLOY_PATH}
+//                 sudo chmod -R 755 ${DEPLOY_PATH}
+
+//                 echo "Deployed to ${DEPLOY_PATH}"
+//                 '''
+//             }
+//         }
+
+//         // ─────────────────────────────────────────
+//         // STAGE 6: Reload Nginx
+//         // ─────────────────────────────────────────
+//         stage('Reload Nginx') {
+//             steps {
+//                 sh '''
+//                 sudo nginx -t
+//                 sudo systemctl reload nginx
+//                 echo "Nginx reloaded"
+//                 '''
+//             }
+//         }
+
+//         // ─────────────────────────────────────────
+//         // STAGE 7: Health Check
+//         // ─────────────────────────────────────────
+//         stage('Health Check') {
+//             steps {
+//                 sh '''
+//                 sleep 2
+//                 RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost)
+//                 if [ "$RESPONSE" = "200" ]; then
+//                     echo "✅ App is live"
+//                 else
+//                     echo "❌ Health check failed — HTTP $RESPONSE"
+//                     exit 1
+//                 fi
+//                 '''
+//             }
+//         }
+//     }
+
+//     // ─────────────────────────────────────────
+//     // POST ACTIONS
+//     // ─────────────────────────────────────────
+//     post {
+//         success {
+//             echo "✅ Deployment Successful → http://${EC2_PUBLIC_IP}"
+//         }
+//         failure {
+//             echo "❌ Pipeline Failed — Check stage logs"
+//         }
+//         always {
+//             cleanWs()
+//         }
+//     }
+// }

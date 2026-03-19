@@ -8,7 +8,7 @@ COPY package*.json ./
 # Use 'npm ci' for faster, more consistent installs and clear cache immediately
 RUN npm ci && npm cache clean --force
 
-# Copy the rest of the project (ensure .dockerignore exists)
+# Copy the rest of the project files
 COPY . .
 
 # Set environment variable for bundler
