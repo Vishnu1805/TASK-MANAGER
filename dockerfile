@@ -14,14 +14,21 @@ COPY . .
 # Set environment variable for bundler
 ENV EXPO_USE_STATIC_WEBPACK_CONFIG=1
 
-# Export web build (Universal export command)
+# Export web build
 RUN npx expo export -p web --output-dir web-build
 
 # ---------- Stage 2: Serve with NGINX ----------
 FROM nginx:alpine
 
-# The final image will only contain these static files and NGINX
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Add custom nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy static build files
 COPY --from=builder /app/web-build /usr/share/nginx/html
 
 EXPOSE 80
+
 CMD ["nginx", "-g", "daemon off;"]
