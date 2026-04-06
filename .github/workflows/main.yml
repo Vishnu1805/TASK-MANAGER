@@ -1,38 +1,35 @@
 name: Deploy Expo Web
 
-# Trigger workflow on push to main branch
 on:
   push:
     branches:
       - main
+
+permissions:
+  contents: write
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout your repository
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4 # Updated to v4
 
-      # 2. Setup Node.js
-      - uses: actions/setup-node@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4 # Updated to v4
         with:
-          node-version: 18
+          node-version: 20
+          cache: 'npm'
 
-      # 3. Install dependencies
-      - run: npm install
+      - name: Install dependencies
+        run: npm ci
 
-      # 4. Install Expo CLI
-      - run: npm install -g expo-cli
+      - name: Build Expo Web
+        run: npx expo export --platform web # Explicit flag for clarity
 
-      # 5. Build Expo Web
-      - run: npx expo export --platform web
-
-      # 6. Move dist/ to public/ for GitHub Pages
-      - run: mv dist public
-
-      # 7. Deploy to GitHub Pages
-      - uses: peaceiris/actions-gh-pages@v3
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./public
+          publish_dir: ./dist
