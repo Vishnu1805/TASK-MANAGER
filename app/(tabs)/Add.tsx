@@ -129,7 +129,7 @@ export default function AddTaskScreen() {
       const { default: FileSystem } = await import('expo-file-system');
       const uploadRes = await FileSystem.uploadAsync(uploadUrl, uri, {
         httpMethod: 'PUT',
-        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        uploadType: (FileSystem as any).FileSystemUploadType?.BINARY_CONTENT ?? 'binary',
         headers: { 'Content-Type': type },
       });
 
