@@ -1,0 +1,18 @@
+image: node:18
+
+cache:
+  paths:
+    - node_modules/
+
+pages:
+  stage: deploy
+  script:
+    - npm install 
+    - npm install -g expo-cli
+    - npx expo export --platform web
+    - mv dist public
+  artifacts:
+    paths:
+      - public
+  only:
+    - main

@@ -1,0 +1,155 @@
+// pipeline {
+//     agent any
+
+//     tools {
+//         nodejs 'NodeJS20'
+//     }
+
+//     environment {
+//         DOCKER_IMAGE = "vishnu2605/task-manager"
+//         EC2_HOST = "13.204.66.135"
+//     }
+
+//     stages {
+
+//         stage('Clone Repository') {
+//             steps {
+//                 git branch: 'main', url: 'https://github.com/Vishnu1805/TASK-MANAGER.git'
+//             }
+//         }
+
+//         stage('Install Dependencies') {
+//             steps {
+//                 sh '''
+//                 npm ci
+//                 npm cache clean --force
+//                 '''
+//             }
+//         }
+
+//         stage('Build Expo Web') {
+//             steps {
+//                 sh '''
+//                 npx expo export -p web --output-dir web-build
+//                 '''
+//             }
+//         }
+
+//         stage('Build Docker Image') {
+//             steps {
+//                 script {
+//                     // Disable BuildKit explicitly
+//                     sh "DOCKER_BUILDKIT=0 docker build -t ${DOCKER_IMAGE}:latest ."
+//                 }
+//             }
+//         }
+
+//         stage('Push to DockerHub') {
+//             steps {
+//                 script {
+//                     docker.withRegistry('', '13dc41ce-a95f-4309-be20-276a8079024f') { // DockerHub credential ID
+//                         docker.image("${DOCKER_IMAGE}:latest").push()
+//                     }
+//                 }
+//             }
+//         }
+
+//         stage('Deploy to EC2') {
+//             steps {
+//                 sshagent(['42c2d084-f704-492a-acab-a5f961a74eb6']) { // SSH key credential ID
+//                     sh """
+//                     ssh -o StrictHostKeyChecking=no ubuntu@${EC2_HOST} << 'ENDSSH'
+//                         docker pull ${DOCKER_IMAGE}:latest
+//                         docker stop task-manager || true
+//                         docker rm task-manager || true
+//                         docker image prune -af
+//                         docker run -d -p 3000:80 --name task-manager ${DOCKER_IMAGE}:latest
+// ENDSSH
+//                     """
+//                 }
+//             }
+//         }
+//     }
+
+//     post {
+//         success {
+//             echo "🚀 Deployment Successful"
+//         }
+//         failure {
+//             echo "Pipeline Failed"
+//         }
+//     }
+// }
+  
+
+
+
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                url: 'https://github.com/Vishnu1805/TASK-MANAGER.git'
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                docker build -t task-manager:${BUILD_NUMBER} .
+                '''
+            }
+        }
+
+        stage('Stop Old Container') {
+            steps {
+                sh '''
+                docker stop task-manager || true
+                docker rm task-manager || true
+                '''
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                sh '''
+                docker run -d \
+                --name task-manager \
+                -p 3000:80 \
+                task-manager:${BUILD_NUMBER}
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                sh '''
+                sleep 15
+                curl http://localhost:3000
+                '''
+            }
+        }
+
+        stage('Cleanup') {
+            steps {
+                sh '''
+                docker image prune -f
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Deployment Successful'
+        }
+
+        failure {
+            echo 'Deployment Failed'
+        }
+    }
+}
+

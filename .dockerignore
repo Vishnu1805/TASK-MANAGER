@@ -1,0 +1,29 @@
+# Node modules
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Expo
+.expo
+.expo-shared
+
+# Build outputs (generated inside Docker)
+dist
+web-build
+
+# Native folders (not needed for web build)
+android
+ios
+
+# Git
+.git
+.gitignore
+
+# IDE / OS files
+.vscode
+*.swp
+.DS_Store
+
+# Environment files (optional but recommended)
+.env
+.env.*
